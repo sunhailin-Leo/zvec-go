@@ -122,7 +122,8 @@ jobs:
           $libDirs = @(
             "${{ github.workspace }}\zvec\build\lib\Release",
             "${{ github.workspace }}\zvec\build\lib",
-            "${{ github.workspace }}\zvec\build\bin\Release"
+            "${{ github.workspace }}\zvec\build\bin\Release",
+            "${{ github.workspace }}\zvec\build\bin"
           )
           foreach ($dir in $libDirs) {
             if (Test-Path $dir) {
@@ -130,6 +131,9 @@ jobs:
               Write-Host "Added to PATH: $dir"
             }
           }
+          # Also list all DLL/lib files for debugging
+          Write-Host "=== All built files ==="
+          Get-ChildItem -Recurse "${{ github.workspace }}\zvec\build" -Include *.dll,*.lib,*.exp -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_.FullName }
         shell: pwsh
 
       # --- Run tests ---
