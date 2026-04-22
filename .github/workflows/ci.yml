@@ -73,9 +73,8 @@ jobs:
       - name: Install CMake and Ninja (Windows)
         if: runner.os == 'Windows'
         run: |
-          choco install cmake ninja -y
-          refreshenv
-        shell: cmd
+          pip install cmake==3.30.0 ninja==1.11.1
+        shell: pwsh
 
       # --- Build C-API library ---
       - name: Build C-API library (Unix)
@@ -97,8 +96,8 @@ jobs:
           cd zvec
           mkdir build -ErrorAction SilentlyContinue
           cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_C_BINDINGS=ON
-          cmake --build . --config Release --target zvec_c_api -j $env:NUMBER_OF_PROCESSORS
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_C_BINDINGS=ON -G Ninja
+          cmake --build . --target zvec_c_api -j $env:NUMBER_OF_PROCESSORS
         shell: pwsh
 
       - name: Verify C-API library (Unix)
@@ -123,7 +122,8 @@ jobs:
           $libDirs = @(
             "${{ github.workspace }}\zvec\build\lib\Release",
             "${{ github.workspace }}\zvec\build\lib",
-            "${{ github.workspace }}\zvec\build\bin\Release"
+            "${{ github.workspace }}\zvec\build\bin\Release",
+            "${{ github.workspace }}\zvec\build\bin"
           )
           foreach ($dir in $libDirs) {
             if (Test-Path $dir) {
@@ -131,62 +131,68 @@ jobs:
               Write-Host "Added to PATH: $dir"
             }
           }
+          # Also list all DLL/lib files for debugging
+          Write-Host "=== All built files ==="
+          Get-ChildItem -Recurse "${{ github.workspace }}\zvec\build" -Include *.dll,*.lib,*.exp -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_.FullName }
         shell: pwsh
 
       # --- Run tests ---
+      # Note: Use "." instead of "./..." to avoid scanning the zvec/ submodule,
+      # which contains Go files (e.g. antlr4) with unrelated dependencies.
+      # This project has only one Go package at the root directory.
       - name: Run Go unit tests (Unix)
         if: runner.os != 'Windows'
-        run: go test -tags "source integration" -count=1 -v ./... 2>&1
+        run: go test -tags "source integration" -count=1 -v . 2>&1
         shell: bash
         env:
           CGO_ENABLED: "1"
 
       - name: Run Go unit tests (Windows)
         if: runner.os == 'Windows'
-        run: go test -tags "source integration" -count=1 -v ./...
-        shell: cmd
+        run: go test -tags "source integration" -count=1 -v .
+        shell: pwsh
         env:
           CGO_ENABLED: "1"
 
       - name: Run Go tests with race detector (Unix)
         if: runner.os != 'Windows'
-        run: go test -tags "source integration" -race -count=1 ./... 2>&1
+        run: go test -tags "source integration" -race -count=1 . 2>&1
         shell: bash
         env:
           CGO_ENABLED: "1"
 
       - name: Run Go tests with race detector (Windows)
         if: runner.os == 'Windows'
-        run: go test -tags "source integration" -race -count=1 ./...
-        shell: cmd
+        run: go test -tags "source integration" -race -count=1 .
+        shell: pwsh
         env:
           CGO_ENABLED: "1"
 
       - name: Run Go benchmarks (Unix)
         if: runner.os != 'Windows'
-        run: go test -tags "source integration" -bench=. -benchmem -benchtime=1s -count=1 -run=^$ ./... 2>&1
+        run: go test -tags "source integration" -bench=. -benchmem -benchtime=1s -count=1 -run=^$ . 2>&1
         shell: bash
         env:
           CGO_ENABLED: "1"
 
       - name: Run Go benchmarks (Windows)
         if: runner.os == 'Windows'
-        run: go test -tags "source integration" -bench=. -benchmem -benchtime=1s -count=1 -run=^$ ./...
-        shell: cmd
+        run: go test -tags "source integration" -bench=. -benchmem -benchtime=1s -count=1 -run=^$ .
+        shell: pwsh
         env:
           CGO_ENABLED: "1"
 
       - name: Run Go vet (Unix)
         if: runner.os != 'Windows'
-        run: go vet -tags "source integration" ./...
+        run: go vet -tags "source integration" .
         shell: bash
         env:
           CGO_ENABLED: "1"
 
       - name: Run Go vet (Windows)
         if: runner.os == 'Windows'
-        run: go vet -tags "source integration" ./...
-        shell: cmd
+        run: go vet -tags "source integration" .
+        shell: pwsh
         env:
           CGO_ENABLED: "1"
 

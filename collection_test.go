@@ -3,6 +3,7 @@
 package zvec
 
 import (
+	"path/filepath"
 	"testing"
 )
 
@@ -105,8 +106,8 @@ func TestCreateAndOpenCollection(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -132,8 +133,8 @@ func TestCreateAndOpenCollectionWithOptions(t *testing.T) {
 		t.Fatalf("SetEnableMmap() failed: %v", err)
 	}
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, options)
 	if err != nil {
@@ -152,8 +153,8 @@ func TestOpenCollection(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	// Create the collection and flush to persist data before closing
 	collection, err := CreateAndOpen(path, schema, nil)
@@ -185,8 +186,8 @@ func TestCollectionGetSchema(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -212,8 +213,8 @@ func TestCollectionGetOptions(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -235,8 +236,8 @@ func TestCollectionGetStats(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -261,8 +262,8 @@ func TestCollectionInsert(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -296,8 +297,8 @@ func TestCollectionInsertEmpty(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -325,8 +326,8 @@ func TestCollectionInsertAndFlush(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -352,8 +353,8 @@ func TestCollectionInsertAndGetStats(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -384,8 +385,8 @@ func TestCollectionUpdate(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -422,8 +423,8 @@ func TestCollectionUpsert(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -468,8 +469,8 @@ func TestCollectionDelete(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -515,8 +516,8 @@ func TestCollectionDeleteEmpty(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -544,8 +545,8 @@ func TestCollectionDeleteByFilter(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -583,8 +584,8 @@ func TestCollectionQuery(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -642,8 +643,8 @@ func TestCollectionFetch(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -693,8 +694,8 @@ func TestCollectionFetchEmpty(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -716,8 +717,8 @@ func TestCollectionOptimize(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -769,8 +770,8 @@ func TestCollectionCreateIndex(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -791,8 +792,8 @@ func TestCollectionDropIndex(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -818,8 +819,8 @@ func TestCollectionAddColumn(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -840,8 +841,8 @@ func TestCollectionAddColumnWithDefault(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -866,8 +867,8 @@ func TestCollectionDropColumn(t *testing.T) {
 	numField := NewFieldSchema("score", DataTypeFloat, true, 0)
 	_ = schema.AddField(numField)
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -889,8 +890,8 @@ func TestCollectionAlterColumn(t *testing.T) {
 	numField := NewFieldSchema("score", DataTypeFloat, true, 0)
 	_ = schema.AddField(numField)
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
@@ -912,8 +913,8 @@ func TestCollectionAlterColumnWithSchema(t *testing.T) {
 	numField := NewFieldSchema("score", DataTypeFloat, true, 0)
 	_ = schema.AddField(numField)
 
-	tmpDir := t.TempDir()
-	path := tmpDir + "/test_collection"
+	tmpDir := testTempDir(t)
+	path := filepath.Join(tmpDir, "test_collection")
 
 	collection, err := CreateAndOpen(path, schema, nil)
 	if err != nil {
