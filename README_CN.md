@@ -49,19 +49,40 @@ go test -tags integration -count=1 -v ./...
 
 zvec-go 提供**两种构建模式**，适合不同的用户场景：
 
-### 模式 1：Vendor 模式（默认 — `go get` 即用）
+### 模式 1：Vendor 模式（默认 — 预编译库）
 
-预编译库通过 Git LFS 内置在仓库中，直接 `go get` 即可使用：
+预编译库通过 GitHub Releases 分发。
+
+**推荐用法：**
 
 ```bash
-# 在您的项目中
-go get github.com/zvec-ai/zvec-go
+# 1. 克隆仓库
+git clone https://github.com/zvec-ai/zvec-go.git
+cd zvec-go
 
-# 构建（需要 cgo）
-CGO_ENABLED=1 go build ./...
+# 2. 下载当前平台的预编译库
+#    （从 GitHub Releases 下载，解压到 lib/ 目录）
+go run ./cmd/download-libs -version v0.3.1
+
+# 3. 构建（需要 cgo）
+CGO_ENABLED=1 go build .
 ```
 
-> **注意**：您需要安装 [Git LFS](https://git-lfs.github.com/) 才能让 `go get` 正确下载预编译库。预编译库支持 **Linux (x64, ARM64)**、**macOS (ARM64)** 和 **Windows (x64)**。
+**备选：使用 go get（需手动下载库文件）**
+
+```bash
+# 1. 添加依赖
+go get github.com/zvec-ai/zvec-go
+
+# 2. 手动从 GitHub Releases 下载预编译库：
+#    https://github.com/zvec-ai/zvec-go/releases/download/v0.3.1/zvec-libs-darwin-arm64.tar.gz
+#    解压到您项目的 lib/ 目录
+
+# 3. 构建（需要 cgo）
+CGO_ENABLED=1 go build .
+```
+
+支持平台：**Linux (x64, ARM64)**、**macOS (ARM64)** 和 **Windows (x64)**。
 
 ### 模式 2：Source 模式（从源码构建）
 

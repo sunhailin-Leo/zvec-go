@@ -49,19 +49,40 @@ go test -tags integration -count=1 -v ./...
 
 zvec-go provides **two build modes** to suit different users:
 
-### Mode 1: Vendor Mode (Default — `go get` Ready)
+### Mode 1: Vendor Mode (Default — Pre-built Libraries)
 
-Pre-built libraries are bundled in the repository via Git LFS. Just `go get` and use:
+Pre-built libraries are distributed via GitHub Releases.
+
+**Recommended Usage:**
 
 ```bash
-# In your project
-go get github.com/zvec-ai/zvec-go
+# 1. Clone the repository
+git clone https://github.com/zvec-ai/zvec-go.git
+cd zvec-go
 
-# Build (cgo is required)
-CGO_ENABLED=1 go build ./...
+# 2. Download pre-built library for your platform
+#    (downloads from GitHub Releases, extracts to lib/)
+go run ./cmd/download-libs -version v0.3.1
+
+# 3. Build (cgo is required)
+CGO_ENABLED=1 go build .
 ```
 
-> **Note**: You need [Git LFS](https://git-lfs.github.com/) installed for `go get` to download the pre-built libraries correctly. The pre-built libraries support **Linux (x64, ARM64)**, **macOS (ARM64)**, and **Windows (x64)**.
+**Alternative: Using with go get (requires manual library download)**
+
+```bash
+# 1. Add the dependency
+go get github.com/zvec-ai/zvec-go
+
+# 2. Download pre-built libraries manually from GitHub Releases:
+#    https://github.com/zvec-ai/zvec-go/releases/download/v0.3.1/zvec-libs-darwin-arm64.tar.gz
+#    Extract to your project's lib/ directory
+
+# 3. Build (cgo is required)
+CGO_ENABLED=1 go build .
+```
+
+Supported platforms: **Linux (x64, ARM64)**, **macOS (ARM64)**, **Windows (x64)**.
 
 ### Mode 2: Source Mode (Build from Source)
 

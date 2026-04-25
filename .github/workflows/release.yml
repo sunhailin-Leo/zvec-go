@@ -26,10 +26,14 @@ jobs:
       matrix:
         include:
           - name: darwin-arm64
-            runner: macos-15
+            # Use macos-14 to avoid queue issues with macos-13 (being deprecated)
+            # MACOSX_DEPLOYMENT_TARGET=13.0 ensures compatibility with macOS 13+
+            runner: macos-14
             platform: darwin_arm64
             lib_name: libzvec_c_api.dylib
             artifact_name: zvec-libs-darwin-arm64
+            env:
+              MACOSX_DEPLOYMENT_TARGET: '13.0'
           - name: linux-x64
             runner: ubuntu-24.04
             platform: linux_amd64
@@ -76,16 +80,18 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Install CMake and Ninja (Windows)
+      - name: Install CMake 3.30 and Ninja (Windows)
         if: runner.os == 'Windows'
-        run: |
-          choco install cmake ninja -y
-          refreshenv
-        shell: cmd
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: '3.30.0'
+          ninjaVersion: '1.11.1'
 
       # --- Build C-API library ---
       - name: Build C-API library (Unix)
         if: runner.os != 'Windows'
+        env:
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.env.MACOSX_DEPLOYMENT_TARGET }}
         run: |
           NPROC=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
           cd zvec
@@ -93,6 +99,7 @@ jobs:
           cmake .. \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_C_BINDINGS=ON \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET:-13.0} \
             -G Ninja
           cmake --build . -j$NPROC --target zvec_c_api
         shell: bash
@@ -187,7 +194,8 @@ jobs:
           cp staging/include/zvec/c_api.h lib/include/zvec/
 
           # Verify Go build compiles (vendor mode, no source tag)
-          CGO_ENABLED=1 go build ./...
+          # Use "go build ." instead of "./..." to avoid scanning zvec submodule
+          CGO_ENABLED=1 go build .
           echo "✓ Go build succeeded with vendor libraries"
         shell: bash
 
@@ -205,8 +213,9 @@ jobs:
           $env:PATH = "$libPath;$env:PATH"
 
           # Verify Go build compiles (vendor mode, no source tag)
+          # Use "go build ." instead of "./..." to avoid scanning zvec submodule
           $env:CGO_ENABLED = "1"
-          go build ./...
+          go build .
           Write-Host "✓ Go build succeeded with vendor libraries"
         shell: pwsh
 
@@ -217,7 +226,11 @@ jobs:
           cd staging
           tar -czf ../${{ matrix.artifact_name }}.tar.gz .
           cd ..
-          sha256sum ${{ matrix.artifact_name }}.tar.gz > ${{ matrix.artifact_name }}.tar.gz.sha256
+          if command -v sha256sum &> /dev/null; then
+            sha256sum ${{ matrix.artifact_name }}.tar.gz > ${{ matrix.artifact_name }}.tar.gz.sha256
+          else
+            shasum -a 256 ${{ matrix.artifact_name }}.tar.gz > ${{ matrix.artifact_name }}.tar.gz.sha256
+          fi
           echo "=== Archive ==="
           ls -la ${{ matrix.artifact_name }}.tar.gz
           cat ${{ matrix.artifact_name }}.tar.gz.sha256
@@ -308,11 +321,14 @@ jobs:
           ### Quick Start
 
           ```bash
-          # Install zvec-go
+          # 1. Get the package
           go get github.com/zvec-ai/zvec-go
 
-          # Build with cgo
-          CGO_ENABLED=1 go build ./...
+          # 2. Download pre-built library for your platform
+          go generate github.com/zvec-ai/zvec-go
+
+          # 3. Build with cgo
+          CGO_ENABLED=1 go build .
           ```
 
           ### Checksums
