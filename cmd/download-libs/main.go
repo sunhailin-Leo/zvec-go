@@ -205,13 +205,14 @@ func extractTarGz(archivePath, destDir string) error {
 			return err
 		}
 
-	// Security: prevent path traversal
+		// Security: prevent path traversal
 		// Strip leading "./" if present
 		cleanName := strings.TrimPrefix(hdr.Name, "./")
-		if cleanName == "" || cleanName == "." {
+		cleaned := filepath.Clean("/" + cleanName)
+		if cleaned == "/" {
 			continue // Skip root directory entry
 		}
-		target := filepath.Join(destDir, filepath.Clean("/"+cleanName))
+		target := filepath.Join(destDir, cleaned[1:])
 		if !strings.HasPrefix(target, filepath.Clean(destDir)+string(os.PathSeparator)) {
 			return fmt.Errorf("illegal path in archive: %s", hdr.Name)
 		}
@@ -251,10 +252,11 @@ func extractZip(archivePath, destDir string) error {
 	for _, f := range r.File {
 		// Strip leading "./" if present
 		cleanName := strings.TrimPrefix(f.Name, "./")
-		if cleanName == "" || cleanName == "." {
+		cleaned := filepath.Clean("/" + cleanName)
+		if cleaned == "/" {
 			continue // Skip root directory entry
 		}
-		target := filepath.Join(destDir, filepath.Clean("/"+cleanName))
+		target := filepath.Join(destDir, cleaned[1:])
 		if !strings.HasPrefix(target, filepath.Clean(destDir)+string(os.PathSeparator)) {
 			return fmt.Errorf("illegal path in archive: %s", f.Name)
 		}
