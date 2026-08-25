@@ -217,6 +217,22 @@ func (q *SubQuery) SetIVFParams(params *IVFQueryParams) error {
 	return err
 }
 
+// SetIVFRaBitQParams sets the IVF RaBitQ query parameters on the sub-query (takes ownership).
+//
+// Available since zvec v0.7.0 (c_api: zvec_sub_query_set_ivf_rabitq_params).
+// Ownership of params is transferred to the sub-query on success.
+func (q *SubQuery) SetIVFRaBitQParams(params *IVFRaBitQQueryParams) error {
+	if params == nil || params.handle == nil {
+		return invalidArgumentError("IVF RaBitQ query params is nil")
+	}
+	defer lockErrorThread()()
+	err := toError(C.zvec_sub_query_set_ivf_rabitq_params(q.handle, params.handle))
+	if err == nil {
+		params.handle = nil
+	}
+	return err
+}
+
 // SetFlatParams sets the Flat query parameters.
 // Ownership of params is transferred to the sub-query on success.
 func (q *SubQuery) SetFlatParams(params *FlatQueryParams) error {

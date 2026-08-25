@@ -5,6 +5,7 @@ package zvec
 import (
 	"errors"
 	"fmt"
+	"io"
 	"runtime"
 	"unsafe"
 )
@@ -195,6 +196,7 @@ const (
 	IndexTypeFlat      IndexType = 3
 	IndexTypeDiskANN   IndexType = 5
 	IndexTypeVamana    IndexType = 6
+	IndexTypeIVFRaBitQ IndexType = 7
 	IndexTypeInvert    IndexType = 10
 	IndexTypeFTS       IndexType = 11
 )
@@ -213,6 +215,8 @@ func (i IndexType) String() string {
 		return "DiskANN"
 	case IndexTypeVamana:
 		return "Vamana"
+	case IndexTypeIVFRaBitQ:
+		return "IVF_RABITQ"
 	case IndexTypeInvert:
 		return "Invert"
 	case IndexTypeFTS:
@@ -258,6 +262,7 @@ const (
 	QuantizeTypeFP16      QuantizeType = 1
 	QuantizeTypeInt8      QuantizeType = 2
 	QuantizeTypeInt4      QuantizeType = 3
+	QuantizeTypeRABITQ    QuantizeType = 4
 )
 
 func (q QuantizeType) String() string {
@@ -270,6 +275,8 @@ func (q QuantizeType) String() string {
 		return "Int8"
 	case QuantizeTypeInt4:
 		return "Int4"
+	case QuantizeTypeRABITQ:
+		return "RABITQ"
 	default:
 		return "Unknown"
 	}
@@ -667,6 +674,26 @@ func NewIVFIndexParams(metric MetricType, nList, nIters int, useSoar bool) (*Ind
 	return params, nil
 }
 
+// NewIVFRaBitQIndexParams creates IVF RaBitQ index parameters with the specified
+// metric type and parameters.
+//
+// Available since zvec v0.7.0 (c_api: zvec_index_params_set_ivf_rabitq_params).
+func NewIVFRaBitQIndexParams(metric MetricType, nlist, totalBits, sampleCount int) (*IndexParams, error) {
+	params, err := newIndexParams(IndexTypeIVFRaBitQ)
+	if err != nil {
+		return nil, err
+	}
+	if err := params.SetMetricType(metric); err != nil {
+		params.Destroy()
+		return nil, err
+	}
+	if err := params.SetIVFRaBitQParams(nlist, totalBits, sampleCount); err != nil {
+		params.Destroy()
+		return nil, err
+	}
+	return params, nil
+}
+
 func NewFlatIndexParams(metric MetricType) (*IndexParams, error) {
 	params, err := newIndexParams(IndexTypeFlat)
 	if err != nil {
@@ -827,6 +854,62 @@ func (p *IndexParams) SetIVFParams(nList, nIters int, useSoar bool) error {
 	}
 	defer lockErrorThread()()
 	return toError(api.indexParamsSetIVFParams(p.handle, int32(nList), int32(nIters), useSoar))
+}
+
+// SetIVFRaBitQParams sets IVF RaBitQ specific parameters.
+// A sampleCount of 0 means all vectors are used for training.
+//
+// Available since zvec v0.7.0 (c_api: zvec_index_params_set_ivf_rabitq_params).
+func (p *IndexParams) SetIVFRaBitQParams(nlist, totalBits, sampleCount int) error {
+	api, err := puregoAPI()
+	if err != nil {
+		return err
+	}
+	defer lockErrorThread()()
+	return toError(api.indexParamsSetIVFRaBitQParams(p.handle, int32(nlist), int32(totalBits), int32(sampleCount)))
+}
+
+// GetIVFRaBitQParams returns the IVF RaBitQ parameters:
+// nlist (cluster centers), totalBits (RaBitQ quantization bits) and
+// sampleCount (training sample count, 0 means all vectors).
+//
+// Available since zvec v0.7.0 (c_api: zvec_index_params_get_ivf_rabitq_params).
+func (p *IndexParams) GetIVFRaBitQParams() (nlist, totalBits, sampleCount int, err error) {
+	api, apiErr := puregoAPI()
+	if apiErr != nil {
+		err = apiErr
+		return
+	}
+	var cNlist, cTotalBits, cSampleCount int32
+	defer lockErrorThread()()
+	err = toError(api.indexParamsGetIVFRaBitQParams(p.handle, &cNlist, &cTotalBits, &cSampleCount))
+	if err != nil {
+		return
+	}
+	return int(cNlist), int(cTotalBits), int(cSampleCount), nil
+}
+
+// SetVamanaTwoPassBuild enables or disables Vamana two-pass graph construction.
+//
+// Available since zvec v0.7.0 (c_api: zvec_index_params_set_vamana_two_pass_build).
+func (p *IndexParams) SetVamanaTwoPassBuild(twoPassBuild bool) error {
+	api, err := puregoAPI()
+	if err != nil {
+		return err
+	}
+	defer lockErrorThread()()
+	return toError(api.indexParamsSetVamanaTwoPassBuild(p.handle, twoPassBuild))
+}
+
+// GetVamanaTwoPassBuild returns whether Vamana two-pass graph construction is enabled.
+//
+// Available since zvec v0.7.0 (c_api: zvec_index_params_get_vamana_two_pass_build).
+func (p *IndexParams) GetVamanaTwoPassBuild() bool {
+	api, err := puregoAPI()
+	if err != nil || p == nil || p.handle == nil {
+		return false
+	}
+	return api.indexParamsGetVamanaTwoPassBuild(p.handle)
 }
 
 func (p *IndexParams) SetInvertParams(enableRangeOpt, enableWildcard bool) error {
@@ -1660,6 +1743,138 @@ func (c *Collection) Fetch(primaryKeys []string, opts *FetchOptions) ([]*Doc, er
 	return wrapDocResults(cDocs, foundCount), nil
 }
 
+// IteratorOptions controls document iterator behavior.
+//
+// Available since zvec v0.7.0 (c_api: zvec_iterator_options_t).
+type IteratorOptions struct {
+	handle unsafe.Pointer
+}
+
+// NewIteratorOptions creates iterator options with default values
+// (all output fields, include vectors).
+func NewIteratorOptions() *IteratorOptions {
+	api, err := puregoAPI()
+	if err != nil {
+		return nil
+	}
+	handle := api.iteratorOptionsCreate()
+	if handle == nil {
+		return nil
+	}
+	return &IteratorOptions{handle: handle}
+}
+
+// Destroy releases the iterator options resources.
+func (o *IteratorOptions) Destroy() {
+	if o != nil && o.handle != nil {
+		if api, err := puregoAPI(); err == nil {
+			api.iteratorOptionsDestroy(o.handle)
+		}
+		o.handle = nil
+	}
+}
+
+// SetOutputFields sets the scalar fields to return.
+// A nil slice returns all fields; a non-nil empty slice returns no scalar
+// fields (only the primary key / system columns).
+func (o *IteratorOptions) SetOutputFields(fields []string) error {
+	api, err := puregoAPI()
+	if err != nil {
+		return err
+	}
+	defer lockErrorThread()()
+	if fields == nil {
+		return toError(api.iteratorOptionsSetOutputFields(o.handle, nil, 0))
+	}
+	ptrs, keep := cStringArray(fields)
+	var ptr unsafe.Pointer
+	if len(ptrs) > 0 {
+		ptr = unsafe.Pointer(&ptrs[0])
+	} else {
+		// Non-NULL pointer with count 0 means "no scalar fields".
+		ptr = unsafe.Pointer(&ptr)
+	}
+	err = toError(api.iteratorOptionsSetOutputFields(o.handle, ptr, uintptr(len(ptrs))))
+	runtime.KeepAlive(ptrs)
+	runtime.KeepAlive(keep)
+	return err
+}
+
+// SetIncludeVector sets whether to include vector fields in the returned documents.
+func (o *IteratorOptions) SetIncludeVector(include bool) error {
+	api, err := puregoAPI()
+	if err != nil {
+		return err
+	}
+	defer lockErrorThread()()
+	return toError(api.iteratorOptionsSetIncludeVector(o.handle, include))
+}
+
+// DocIterator iterates over all documents in a collection using an isolated
+// snapshot taken at creation time (later writes are not visible).
+//
+// While an iterator is open, schema changes (create/drop index,
+// add/alter/drop column) and destroy are rejected. Close every iterator
+// before releasing the last collection handle.
+//
+// Available since zvec v0.7.0 (c_api: zvec_doc_iterator_t).
+type DocIterator struct {
+	handle unsafe.Pointer
+}
+
+// CreateIterator creates a document iterator over the collection.
+// Pass nil for opts to use defaults (all fields, include vectors).
+//
+// Available since zvec v0.7.0 (c_api: zvec_collection_create_iterator).
+func (c *Collection) CreateIterator(opts *IteratorOptions) (*DocIterator, error) {
+	api, err := puregoAPI()
+	if err != nil {
+		return nil, err
+	}
+	var cOpts unsafe.Pointer
+	if opts != nil {
+		cOpts = opts.handle
+	}
+	var cIter unsafe.Pointer
+	defer lockErrorThread()()
+	if err := toError(api.collectionCreateIterator(c.handle, cOpts, &cIter)); err != nil {
+		return nil, err
+	}
+	return &DocIterator{handle: cIter}, nil
+}
+
+// Next advances the iterator and returns the next document.
+// It returns io.EOF when iteration is complete.
+// The caller is responsible for calling Destroy() on each returned Doc.
+func (it *DocIterator) Next() (*Doc, error) {
+	if it == nil || it.handle == nil {
+		return nil, io.EOF
+	}
+	api, err := puregoAPI()
+	if err != nil {
+		return nil, err
+	}
+	var cDoc unsafe.Pointer
+	defer lockErrorThread()()
+	if err := toError(api.docIteratorNext(it.handle, &cDoc)); err != nil {
+		return nil, err
+	}
+	if cDoc == nil {
+		return nil, io.EOF
+	}
+	return &Doc{handle: cDoc}, nil
+}
+
+// Close releases the iterator resources.
+func (it *DocIterator) Close() {
+	if it != nil && it.handle != nil {
+		if api, err := puregoAPI(); err == nil {
+			api.docIteratorClose(it.handle)
+		}
+		it.handle = nil
+	}
+}
+
 func wrapDocResults(cResults unsafe.Pointer, count uintptr) []*Doc {
 	if cResults == nil || count == 0 {
 		return nil
@@ -2205,6 +2420,131 @@ func (p *DiskANNQueryParams) GetIsUsingRefiner() bool {
 	return api.diskannQueryParamsGetIsUsingRefiner(p.handle)
 }
 
+// IVFRaBitQQueryParams represents query parameters for IVF RaBitQ index.
+//
+// Available since zvec v0.7.0 (c_api: zvec_ivf_rabitq_query_params_t).
+type IVFRaBitQQueryParams struct {
+	handle unsafe.Pointer
+}
+
+// NewIVFRaBitQQueryParams creates a new IVF RaBitQ query parameters instance.
+func NewIVFRaBitQQueryParams(nprobe int, radius float32, isLinear, isUsingRefiner bool) *IVFRaBitQQueryParams {
+	api, err := puregoAPI()
+	if err != nil {
+		return nil
+	}
+	handle := api.ivfRabitqQueryParamsCreate(int32(nprobe), radius, isLinear, isUsingRefiner)
+	if handle == nil {
+		return nil
+	}
+	return &IVFRaBitQQueryParams{handle: handle}
+}
+
+// Destroy releases the IVF RaBitQ query parameters resources.
+func (p *IVFRaBitQQueryParams) Destroy() {
+	if p != nil && p.handle != nil {
+		if api, err := puregoAPI(); err == nil {
+			api.ivfRabitqQueryParamsDestroy(p.handle)
+		}
+		p.handle = nil
+	}
+}
+
+// SetNprobe sets the number of probe clusters.
+func (p *IVFRaBitQQueryParams) SetNprobe(nprobe int) error {
+	api, err := puregoAPI()
+	if err != nil {
+		return err
+	}
+	defer lockErrorThread()()
+	return toError(api.ivfRabitqQueryParamsSetNprobe(p.handle, int32(nprobe)))
+}
+
+// GetNprobe returns the number of probe clusters.
+func (p *IVFRaBitQQueryParams) GetNprobe() int {
+	api, err := puregoAPI()
+	if err != nil || p == nil || p.handle == nil {
+		return 0
+	}
+	return int(api.ivfRabitqQueryParamsGetNprobe(p.handle))
+}
+
+// SetScaleFactor sets the candidate expansion factor used by the refiner.
+func (p *IVFRaBitQQueryParams) SetScaleFactor(scaleFactor float32) error {
+	api, err := puregoAPI()
+	if err != nil {
+		return err
+	}
+	defer lockErrorThread()()
+	return toError(api.ivfRabitqQueryParamsSetScaleFactor(p.handle, scaleFactor))
+}
+
+// GetScaleFactor returns the candidate expansion factor used by the refiner.
+func (p *IVFRaBitQQueryParams) GetScaleFactor() float32 {
+	api, err := puregoAPI()
+	if err != nil || p == nil || p.handle == nil {
+		return 0
+	}
+	return api.ivfRabitqQueryParamsGetScaleFactor(p.handle)
+}
+
+// SetRadius sets the search radius.
+func (p *IVFRaBitQQueryParams) SetRadius(radius float32) error {
+	api, err := puregoAPI()
+	if err != nil {
+		return err
+	}
+	defer lockErrorThread()()
+	return toError(api.ivfRabitqQueryParamsSetRadius(p.handle, radius))
+}
+
+// GetRadius returns the search radius.
+func (p *IVFRaBitQQueryParams) GetRadius() float32 {
+	api, err := puregoAPI()
+	if err != nil || p == nil || p.handle == nil {
+		return 0
+	}
+	return api.ivfRabitqQueryParamsGetRadius(p.handle)
+}
+
+// SetIsLinear sets the linear search mode.
+func (p *IVFRaBitQQueryParams) SetIsLinear(isLinear bool) error {
+	api, err := puregoAPI()
+	if err != nil {
+		return err
+	}
+	defer lockErrorThread()()
+	return toError(api.ivfRabitqQueryParamsSetIsLinear(p.handle, isLinear))
+}
+
+// GetIsLinear returns the linear search mode.
+func (p *IVFRaBitQQueryParams) GetIsLinear() bool {
+	api, err := puregoAPI()
+	if err != nil || p == nil || p.handle == nil {
+		return false
+	}
+	return api.ivfRabitqQueryParamsGetIsLinear(p.handle)
+}
+
+// SetIsUsingRefiner sets whether to use refiner.
+func (p *IVFRaBitQQueryParams) SetIsUsingRefiner(isUsingRefiner bool) error {
+	api, err := puregoAPI()
+	if err != nil {
+		return err
+	}
+	defer lockErrorThread()()
+	return toError(api.ivfRabitqQueryParamsSetIsUsingRefiner(p.handle, isUsingRefiner))
+}
+
+// GetIsUsingRefiner returns whether to use refiner.
+func (p *IVFRaBitQQueryParams) GetIsUsingRefiner() bool {
+	api, err := puregoAPI()
+	if err != nil || p == nil || p.handle == nil {
+		return false
+	}
+	return api.ivfRabitqQueryParamsGetIsUsingRefiner(p.handle)
+}
+
 type FTSQueryParams struct {
 	handle unsafe.Pointer
 }
@@ -2452,6 +2792,26 @@ func (q *SearchQuery) SetDiskANNParams(params *DiskANNQueryParams) error {
 	return err
 }
 
+// SetIVFRaBitQParams sets the IVF RaBitQ query parameters.
+// Ownership of params is transferred to the query on success.
+//
+// Available since zvec v0.7.0 (c_api: zvec_vector_query_set_ivf_rabitq_params).
+func (q *SearchQuery) SetIVFRaBitQParams(params *IVFRaBitQQueryParams) error {
+	if params == nil || params.handle == nil {
+		return invalidArgumentError("IVF RaBitQ query params is nil")
+	}
+	api, err := puregoAPI()
+	if err != nil {
+		return err
+	}
+	defer lockErrorThread()()
+	err = toError(api.vectorQuerySetIVFRaBitQParams(q.handle, params.handle))
+	if err == nil {
+		params.handle = nil
+	}
+	return err
+}
+
 func (q *SearchQuery) SetFTSParams(params *FTSQueryParams) error {
 	if params == nil || params.handle == nil {
 		return invalidArgumentError("FTS query params is nil")
@@ -2639,6 +2999,26 @@ func (q *GroupBySearchQuery) SetIVFParams(params *IVFQueryParams) error {
 	}
 	defer lockErrorThread()()
 	err = toError(api.groupByQuerySetIVFParams(q.handle, params.handle))
+	if err == nil {
+		params.handle = nil
+	}
+	return err
+}
+
+// SetIVFRaBitQParams sets the IVF RaBitQ query parameters.
+// Ownership of params is transferred to the query on success.
+//
+// Available since zvec v0.7.0 (c_api: zvec_group_by_vector_query_set_ivf_rabitq_params).
+func (q *GroupBySearchQuery) SetIVFRaBitQParams(params *IVFRaBitQQueryParams) error {
+	if params == nil || params.handle == nil {
+		return invalidArgumentError("IVF RaBitQ query params is nil")
+	}
+	api, err := puregoAPI()
+	if err != nil {
+		return err
+	}
+	defer lockErrorThread()()
+	err = toError(api.groupByQuerySetIVFRaBitQParams(q.handle, params.handle))
 	if err == nil {
 		params.handle = nil
 	}
@@ -2963,6 +3343,26 @@ func (q *SubQuery) SetDiskANNParams(params *DiskANNQueryParams) error {
 	}
 	defer lockErrorThread()()
 	err = toError(api.subQuerySetDiskANNParams(q.handle, params.handle))
+	if err == nil {
+		params.handle = nil
+	}
+	return err
+}
+
+// SetIVFRaBitQParams sets the IVF RaBitQ query parameters on the sub-query (takes ownership).
+//
+// Available since zvec v0.7.0 (c_api: zvec_sub_query_set_ivf_rabitq_params).
+// Ownership of params is transferred to the sub-query on success.
+func (q *SubQuery) SetIVFRaBitQParams(params *IVFRaBitQQueryParams) error {
+	if params == nil || params.handle == nil {
+		return invalidArgumentError("IVF RaBitQ query params is nil")
+	}
+	api, err := puregoAPI()
+	if err != nil {
+		return err
+	}
+	defer lockErrorThread()()
+	err = toError(api.subQuerySetIVFRaBitQParams(q.handle, params.handle))
 	if err == nil {
 		params.handle = nil
 	}

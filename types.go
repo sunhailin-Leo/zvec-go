@@ -55,6 +55,8 @@ const (
 	IndexTypeIVF       IndexType = 2
 	IndexTypeFlat      IndexType = 3
 	IndexTypeDiskANN   IndexType = 5
+	IndexTypeVamana    IndexType = 6
+	IndexTypeIVFRaBitQ IndexType = 7
 	IndexTypeInvert    IndexType = 10
 	IndexTypeFTS       IndexType = 11
 )
@@ -99,6 +101,7 @@ const (
 	QuantizeTypeFP16      QuantizeType = 1
 	QuantizeTypeInt8      QuantizeType = 2
 	QuantizeTypeInt4      QuantizeType = 3
+	QuantizeTypeRABITQ    QuantizeType = 4
 )
 
 func (q QuantizeType) String() string {
@@ -111,6 +114,8 @@ func (q QuantizeType) String() string {
 		return "Int8"
 	case QuantizeTypeInt4:
 		return "Int4"
+	case QuantizeTypeRABITQ:
+		return "RABITQ"
 	default:
 		return "Unknown"
 	}

@@ -170,6 +170,90 @@ func (p *DiskANNQueryParams) GetIsUsingRefiner() bool {
 	return bool(C.zvec_query_params_diskann_get_is_using_refiner(p.handle))
 }
 
+// IVFRaBitQQueryParams represents query parameters for IVF RaBitQ index.
+//
+// Available since zvec v0.7.0 (c_api: zvec_ivf_rabitq_query_params_t).
+type IVFRaBitQQueryParams struct {
+	handle *C.zvec_ivf_rabitq_query_params_t
+}
+
+// NewIVFRaBitQQueryParams creates a new IVF RaBitQ query parameters instance.
+func NewIVFRaBitQQueryParams(nprobe int, radius float32, isLinear, isUsingRefiner bool) *IVFRaBitQQueryParams {
+	handle := C.zvec_query_params_ivf_rabitq_create(
+		C.int(nprobe),
+		C.float(radius),
+		C.bool(isLinear),
+		C.bool(isUsingRefiner),
+	)
+	if handle == nil {
+		return nil
+	}
+	return &IVFRaBitQQueryParams{handle: handle}
+}
+
+// Destroy releases the IVF RaBitQ query parameters resources.
+func (p *IVFRaBitQQueryParams) Destroy() {
+	if p.handle != nil {
+		C.zvec_query_params_ivf_rabitq_destroy(p.handle)
+		p.handle = nil
+	}
+}
+
+// SetNprobe sets the number of probe clusters.
+func (p *IVFRaBitQQueryParams) SetNprobe(nprobe int) error {
+	defer lockErrorThread()()
+	return toError(C.zvec_query_params_ivf_rabitq_set_nprobe(p.handle, C.int(nprobe)))
+}
+
+// GetNprobe returns the number of probe clusters.
+func (p *IVFRaBitQQueryParams) GetNprobe() int {
+	return int(C.zvec_query_params_ivf_rabitq_get_nprobe(p.handle))
+}
+
+// SetScaleFactor sets the candidate expansion factor used by the refiner.
+func (p *IVFRaBitQQueryParams) SetScaleFactor(scaleFactor float32) error {
+	defer lockErrorThread()()
+	return toError(C.zvec_query_params_ivf_rabitq_set_scale_factor(p.handle, C.float(scaleFactor)))
+}
+
+// GetScaleFactor returns the candidate expansion factor used by the refiner.
+func (p *IVFRaBitQQueryParams) GetScaleFactor() float32 {
+	return float32(C.zvec_query_params_ivf_rabitq_get_scale_factor(p.handle))
+}
+
+// SetRadius sets the search radius.
+func (p *IVFRaBitQQueryParams) SetRadius(radius float32) error {
+	defer lockErrorThread()()
+	return toError(C.zvec_query_params_ivf_rabitq_set_radius(p.handle, C.float(radius)))
+}
+
+// GetRadius returns the search radius.
+func (p *IVFRaBitQQueryParams) GetRadius() float32 {
+	return float32(C.zvec_query_params_ivf_rabitq_get_radius(p.handle))
+}
+
+// SetIsLinear sets the linear search mode.
+func (p *IVFRaBitQQueryParams) SetIsLinear(isLinear bool) error {
+	defer lockErrorThread()()
+	return toError(C.zvec_query_params_ivf_rabitq_set_is_linear(p.handle, C.bool(isLinear)))
+}
+
+// GetIsLinear returns the linear search mode.
+func (p *IVFRaBitQQueryParams) GetIsLinear() bool {
+	return bool(C.zvec_query_params_ivf_rabitq_get_is_linear(p.handle))
+}
+
+// SetIsUsingRefiner sets whether to use refiner.
+func (p *IVFRaBitQQueryParams) SetIsUsingRefiner(isUsingRefiner bool) error {
+	defer lockErrorThread()()
+	return toError(C.zvec_query_params_ivf_rabitq_set_is_using_refiner(p.handle, C.bool(isUsingRefiner)))
+}
+
+// GetIsUsingRefiner returns whether to use refiner.
+func (p *IVFRaBitQQueryParams) GetIsUsingRefiner() bool {
+	return bool(C.zvec_query_params_ivf_rabitq_get_is_using_refiner(p.handle))
+}
+
 // FTSQueryParams represents query parameters for FTS index.
 type FTSQueryParams struct {
 	handle *C.zvec_fts_query_params_t
@@ -343,6 +427,22 @@ func (q *SearchQuery) SetHNSWParams(params *HNSWQueryParams) error {
 func (q *SearchQuery) SetIVFParams(params *IVFQueryParams) error {
 	defer lockErrorThread()()
 	err := toError(C.zvec_vector_query_set_ivf_params(q.handle, params.handle))
+	if err == nil {
+		params.handle = nil // ownership transferred
+	}
+	return err
+}
+
+// SetIVFRaBitQParams sets the IVF RaBitQ query parameters.
+// Ownership of params is transferred to the query on success.
+//
+// Available since zvec v0.7.0 (c_api: zvec_vector_query_set_ivf_rabitq_params).
+func (q *SearchQuery) SetIVFRaBitQParams(params *IVFRaBitQQueryParams) error {
+	if params == nil || params.handle == nil {
+		return invalidArgumentError("IVF RaBitQ query params is nil")
+	}
+	defer lockErrorThread()()
+	err := toError(C.zvec_vector_query_set_ivf_rabitq_params(q.handle, params.handle))
 	if err == nil {
 		params.handle = nil // ownership transferred
 	}
@@ -526,6 +626,22 @@ func (q *GroupBySearchQuery) SetHNSWParams(params *HNSWQueryParams) error {
 func (q *GroupBySearchQuery) SetIVFParams(params *IVFQueryParams) error {
 	defer lockErrorThread()()
 	err := toError(C.zvec_group_by_vector_query_set_ivf_params(q.handle, params.handle))
+	if err == nil {
+		params.handle = nil // ownership transferred
+	}
+	return err
+}
+
+// SetIVFRaBitQParams sets the IVF RaBitQ query parameters.
+// Ownership of params is transferred to the query on success.
+//
+// Available since zvec v0.7.0 (c_api: zvec_group_by_vector_query_set_ivf_rabitq_params).
+func (q *GroupBySearchQuery) SetIVFRaBitQParams(params *IVFRaBitQQueryParams) error {
+	if params == nil || params.handle == nil {
+		return invalidArgumentError("IVF RaBitQ query params is nil")
+	}
+	defer lockErrorThread()()
+	err := toError(C.zvec_group_by_vector_query_set_ivf_rabitq_params(q.handle, params.handle))
 	if err == nil {
 		params.handle = nil // ownership transferred
 	}

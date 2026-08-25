@@ -86,6 +86,26 @@ func NewFlatIndexParams(metric MetricType) (*IndexParams, error) {
 	return params, nil
 }
 
+// NewIVFRaBitQIndexParams creates IVF RaBitQ index parameters with the specified
+// metric type and parameters.
+//
+// Available since zvec v0.7.0 (c_api: zvec_index_params_set_ivf_rabitq_params).
+func NewIVFRaBitQIndexParams(metric MetricType, nlist, totalBits, sampleCount int) (*IndexParams, error) {
+	params := NewIndexParams(IndexTypeIVFRaBitQ)
+	if params == nil {
+		return nil, &Error{Code: InternalError, Message: "failed to create IVF RaBitQ index params"}
+	}
+	if err := params.SetMetricType(metric); err != nil {
+		params.Destroy()
+		return nil, err
+	}
+	if err := params.SetIVFRaBitQParams(nlist, totalBits, sampleCount); err != nil {
+		params.Destroy()
+		return nil, err
+	}
+	return params, nil
+}
+
 // NewDiskANNIndexParams creates DiskANN index parameters with the specified metric type.
 func NewDiskANNIndexParams(metric MetricType, maxDegree, listSize, pqChunkNum int) (*IndexParams, error) {
 	params := NewIndexParams(IndexTypeDiskANN)
@@ -192,6 +212,45 @@ func (p *IndexParams) GetDiskANNPQChunkNum() int {
 func (p *IndexParams) SetIVFParams(nList, nIters int, useSoar bool) error {
 	defer lockErrorThread()()
 	return toError(C.zvec_index_params_set_ivf_params(p.handle, C.int(nList), C.int(nIters), C.bool(useSoar)))
+}
+
+// SetIVFRaBitQParams sets IVF RaBitQ specific parameters.
+// A sampleCount of 0 means all vectors are used for training.
+//
+// Available since zvec v0.7.0 (c_api: zvec_index_params_set_ivf_rabitq_params).
+func (p *IndexParams) SetIVFRaBitQParams(nlist, totalBits, sampleCount int) error {
+	defer lockErrorThread()()
+	return toError(C.zvec_index_params_set_ivf_rabitq_params(p.handle, C.int(nlist), C.int(totalBits), C.int(sampleCount)))
+}
+
+// GetIVFRaBitQParams returns the IVF RaBitQ parameters:
+// nlist (cluster centers), totalBits (RaBitQ quantization bits) and
+// sampleCount (training sample count, 0 means all vectors).
+//
+// Available since zvec v0.7.0 (c_api: zvec_index_params_get_ivf_rabitq_params).
+func (p *IndexParams) GetIVFRaBitQParams() (nlist, totalBits, sampleCount int, err error) {
+	var cNlist, cTotalBits, cSampleCount C.int
+	defer lockErrorThread()()
+	err = toError(C.zvec_index_params_get_ivf_rabitq_params(p.handle, &cNlist, &cTotalBits, &cSampleCount))
+	if err != nil {
+		return
+	}
+	return int(cNlist), int(cTotalBits), int(cSampleCount), nil
+}
+
+// SetVamanaTwoPassBuild enables or disables Vamana two-pass graph construction.
+//
+// Available since zvec v0.7.0 (c_api: zvec_index_params_set_vamana_two_pass_build).
+func (p *IndexParams) SetVamanaTwoPassBuild(twoPassBuild bool) error {
+	defer lockErrorThread()()
+	return toError(C.zvec_index_params_set_vamana_two_pass_build(p.handle, C.bool(twoPassBuild)))
+}
+
+// GetVamanaTwoPassBuild returns whether Vamana two-pass graph construction is enabled.
+//
+// Available since zvec v0.7.0 (c_api: zvec_index_params_get_vamana_two_pass_build).
+func (p *IndexParams) GetVamanaTwoPassBuild() bool {
+	return bool(C.zvec_index_params_get_vamana_two_pass_build(p.handle))
 }
 
 // SetInvertParams sets invert index specific parameters.

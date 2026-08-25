@@ -219,6 +219,7 @@ func main() {
 | `NewFieldSchema(name, dataType, nullable, dim)` | 创建字段 Schema |
 | `NewHNSWIndexParams(metricType, M, efConstruction)` | 创建 HNSW 索引参数 |
 | `NewIVFIndexParams(metricType, nlist, nIters, useSoar)` | 创建 IVF 索引参数 |
+| `NewIVFRaBitQIndexParams(metricType, nlist, totalBits, sampleCount)` | 创建 IVF RaBitQ 索引参数（v0.7.0 起） |
 | `NewFlatIndexParams(metricType)` | 创建 Flat 索引参数 |
 | `NewInvertIndexParams(enable, wildcard)` | 创建倒排索引参数 |
 | `NewFTSIndexParams(tokenizer, filters, extra)` | 创建全文搜索索引参数 |
@@ -242,6 +243,17 @@ func main() {
 | `AlterColumn(fieldName, field)` | 修改列 |
 | `CreateIndex(fieldName, params)` | 创建索引 |
 | `DropIndex(fieldName)` | 删除索引 |
+| `CreateIterator(options)` | 创建集合文档迭代器（v0.7.0 起） |
+
+### 文档迭代器（v0.7.0 起）
+
+| API | 说明 |
+|-----|------|
+| `NewIteratorOptions()` | 创建迭代器选项（默认：全部字段、包含向量） |
+| `IteratorOptions.SetOutputFields(fields)` | 设置返回的标量字段（nil = 全部字段） |
+| `IteratorOptions.SetIncludeVector(include)` | 设置是否返回向量字段 |
+| `DocIterator.Next()` | 推进迭代器；结束时返回 `io.EOF` |
+| `DocIterator.Close()` | 释放迭代器资源 |
 
 ### 文档操作
 
@@ -384,7 +396,7 @@ go run main.go
 ./scripts/sync-zvec.sh
 
 # 更新到指定的标签版本
-./scripts/sync-zvec.sh v0.6.0
+./scripts/sync-zvec.sh v0.7.0
 ```
 
 同时配置了 [Dependabot](https://docs.github.com/en/code-security/dependabot)，当 zvec submodule 有新的提交时会自动创建 PR。

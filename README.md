@@ -219,6 +219,7 @@ func main() {
 | `NewFieldSchema(name, dataType, nullable, dim)` | Create a field schema |
 | `NewHNSWIndexParams(metricType, M, efConstruction)` | Create HNSW index parameters |
 | `NewIVFIndexParams(metricType, nlist, nIters, useSoar)` | Create IVF index parameters |
+| `NewIVFRaBitQIndexParams(metricType, nlist, totalBits, sampleCount)` | Create IVF RaBitQ index parameters (since v0.7.0) |
 | `NewFlatIndexParams(metricType)` | Create Flat index parameters |
 | `NewInvertIndexParams(enable, wildcard)` | Create invert index parameters |
 | `NewFTSIndexParams(tokenizer, filters, extra)` | Create FTS index parameters |
@@ -242,6 +243,17 @@ func main() {
 | `AlterColumn(fieldName, field)` | Alter a column |
 | `CreateIndex(fieldName, params)` | Create an index |
 | `DropIndex(fieldName)` | Drop an index |
+| `CreateIterator(options)` | Create a document iterator over the collection (since v0.7.0) |
+
+### Document Iterator (since v0.7.0)
+
+| API | Description |
+|-----|-------------|
+| `NewIteratorOptions()` | Create iterator options (defaults: all fields, include vectors) |
+| `IteratorOptions.SetOutputFields(fields)` | Set scalar fields to return (nil = all) |
+| `IteratorOptions.SetIncludeVector(include)` | Set whether to include vector fields |
+| `DocIterator.Next()` | Advance the iterator; returns `io.EOF` at the end |
+| `DocIterator.Close()` | Release iterator resources |
 
 ### Document Operations
 
@@ -384,7 +396,7 @@ This repository uses a **git submodule** to track the [zvec](https://github.com/
 ./scripts/sync-zvec.sh
 
 # Update to a specific tag
-./scripts/sync-zvec.sh v0.6.0
+./scripts/sync-zvec.sh v0.7.0
 ```
 
 [Dependabot](https://docs.github.com/en/code-security/dependabot) is also configured to automatically create PRs when the zvec submodule has new commits.
