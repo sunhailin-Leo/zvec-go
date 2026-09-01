@@ -94,7 +94,12 @@ CGO_LDFLAGS="-L$(pwd)/lib/darwin_arm64 -lzvec_c_api -Wl,-rpath,$(pwd)/lib/darwin
 CGO_ENABLED=1 go build .
 ```
 
-支持平台：**Linux (x64, ARM64)**、**macOS (ARM64)** 和 **Windows (x64)**。
+支持平台：**Linux (x64, ARM64；glibc 2.28+ 及 musl/Alpine)**、
+**macOS (ARM64)** 和 **Windows (x64)**。
+
+在 Linux 上，`download-libs` 会自动检测 musl 系统（如 Alpine）并下载对应的
+musl 版本；也可用 `-libc glibc` 或 `-libc musl` 手动指定。Linux glibc 版本
+基于 glibc 2.28（manylinux_2_28）构建，与上游 zvec 预编译 SDK 保持一致。
 
 每个预编译包还会在 `lib/data/jieba_dict/` 下附带 jieba 词典（`jieba` FTS
 分词器需要）。`Initialize()` 会自动定位并注册词典，无需手动配置，详见下文

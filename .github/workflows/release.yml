@@ -42,15 +42,36 @@ jobs:
           #   artifact_name: zvec-libs-linux-x64
           - name: linux-x64
             runner: ubuntu-latest
-            container: quay.io/pypa/manylinux_2_28_x86_64
+            container: quay.io/pypa/manylinux_2_28_x86_64:2026.03.01-1
             platform: linux_amd64
             lib_name: libzvec_c_api.so
             artifact_name: zvec-libs-linux-x64
           - name: linux-arm64
             runner: ubuntu-24.04-arm
+            # manylinux_2_28 (glibc 2.28) to match upstream; building directly
+            # on the Ubuntu 24.04 runner would require glibc 2.39.
+            container: quay.io/pypa/manylinux_2_28_aarch64:2026.03.01-1
             platform: linux_arm64
             lib_name: libzvec_c_api.so
             artifact_name: zvec-libs-linux-arm64
+          - name: linux-musl-x64
+            runner: ubuntu-24.04
+            container: quay.io/pypa/musllinux_1_2_x86_64:2026.03.01-1
+            platform: linux_amd64
+            lib_name: libzvec_c_api.so
+            artifact_name: zvec-libs-linux-musl-x64
+            musl: true
+          # GitHub runners cannot execute JavaScript actions inside Alpine
+          # containers on arm64, so this job keeps the actions on the host
+          # and runs the build inside a container via docker exec — the same
+          # approach as build-musl-arm64 in upstream _build_prebuilt.yml.
+          - name: linux-musl-arm64
+            runner: ubuntu-24.04-arm
+            platform: linux_arm64
+            lib_name: libzvec_c_api.so
+            artifact_name: zvec-libs-linux-musl-arm64
+            musl: true
+            docker_build: quay.io/pypa/musllinux_1_2_aarch64:2026.03.01-1
           - name: windows-x64
             runner: windows-2025
             platform: windows_amd64
@@ -66,6 +87,14 @@ jobs:
           submodules: recursive
           fetch-depth: 0
           fetch-tags: true
+
+      # musllinux containers may lack bash/git, which later steps need.
+      - name: Ensure bash & git (musl container)
+        if: matrix.musl && !matrix.docker_build
+        run: |
+          command -v bash || apk add --no-cache bash
+          command -v git || apk add --no-cache git
+        shell: sh
 
       # Ensure zvec submodule has full history and tags so that
       # `git describe --tags` in CMake can resolve the correct version.
@@ -95,16 +124,20 @@ jobs:
 
       # --- Unix build tools ---
       - name: Set up Python (for CMake/Ninja)
-        if: runner.os != 'Windows' && matrix.container == ''
+        if: runner.os != 'Windows' && matrix.container == '' && matrix.docker_build == ''
         uses: actions/setup-python@v6
         with:
           python-version: '3.10'
 
       - name: Install build tools (Unix)
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && matrix.docker_build == ''
         run: |
           if [ -d /opt/python/cp310-cp310 ]; then
             export PATH="/opt/python/cp310-cp310/bin:$PATH"
+            # Persist for later steps so the pip-installed cmake/ninja shadow
+            # the image-bundled tools (musllinux images ship an unsupported
+            # CMake 4.x) — same as upstream _build_prebuilt.yml.
+            echo "/opt/python/cp310-cp310/bin" >> $GITHUB_PATH
           fi
           # Install system build tools for manylinux/EL-based containers
           if command -v yum &> /dev/null; then
@@ -128,7 +161,7 @@ jobs:
 
       # --- Build C-API library ---
       - name: Build C-API library (Unix)
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && matrix.docker_build == ''
         env:
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.env.MACOSX_DEPLOYMENT_TARGET }}
         run: |
@@ -142,6 +175,49 @@ jobs:
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -G Ninja
           cmake --build . -j$NPROC --target zvec_c_api
+        shell: bash
+
+      # --- musl arm64: build inside a musllinux container via docker exec ---
+      # JavaScript actions cannot run inside Alpine containers on arm64, so
+      # only the CMake build runs in the container; the workspace is mounted.
+      # Prepends the image-bundled CPython so the pip-installed cmake/ninja
+      # shadow the tools bundled in the image, which include an unsupported
+      # CMake 4.x — same as upstream build-musl-arm64.
+      - name: Start musllinux container (musl arm64)
+        if: matrix.docker_build != ''
+        run: |
+          docker run -d --name zvec-musl-build \
+            -v "$GITHUB_WORKSPACE:/work" \
+            -w /work \
+            -e PATH="/opt/python/cp310-cp310/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+            "${{ matrix.docker_build }}" sleep infinity
+          docker exec zvec-musl-build sh -c \
+            'command -v bash || apk add --no-cache bash; command -v git || apk add --no-cache git'
+        shell: bash
+
+      - name: Install build tools (musl arm64 container)
+        if: matrix.docker_build != ''
+        run: |
+          docker exec zvec-musl-build python -m pip install --upgrade pip
+          docker exec zvec-musl-build python -m pip install \
+            cmake==3.30.0 \
+            ninja==1.11.1
+        shell: bash
+
+      - name: Build C-API library (musl arm64 container)
+        if: matrix.docker_build != ''
+        run: |
+          docker exec zvec-musl-build cmake -S zvec -B zvec/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_C_BINDINGS=ON \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+          docker exec zvec-musl-build sh -c \
+            'cmake --build zvec/build -j"$(nproc)" --target zvec_c_api'
+        shell: bash
+
+      - name: Tear down musllinux container (musl arm64)
+        if: always() && matrix.docker_build != ''
+        run: docker rm -f zvec-musl-build || true
         shell: bash
 
       - name: Build C-API library (Windows)
@@ -386,8 +462,10 @@ jobs:
           | Platform | Archive | Architecture |
           |----------|---------|--------------|
           | **macOS** | `zvec-libs-darwin-arm64.tar.gz` | Apple Silicon (M1/M2/M3/M4) |
-          | **Linux** | `zvec-libs-linux-x64.tar.gz` | x86_64 |
-          | **Linux** | `zvec-libs-linux-arm64.tar.gz` | ARM64 (aarch64) |
+          | **Linux (glibc 2.28+)** | `zvec-libs-linux-x64.tar.gz` | x86_64 |
+          | **Linux (glibc 2.28+)** | `zvec-libs-linux-arm64.tar.gz` | ARM64 (aarch64) |
+          | **Linux (musl, Alpine)** | `zvec-libs-linux-musl-x64.tar.gz` | x86_64 |
+          | **Linux (musl, Alpine)** | `zvec-libs-linux-musl-arm64.tar.gz` | ARM64 (aarch64) |
           | **Windows** | `zvec-libs-windows-x64.zip` | x86_64 |
 
           Each archive also ships the jieba dictionaries under

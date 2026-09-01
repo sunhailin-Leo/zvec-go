@@ -94,7 +94,13 @@ CGO_LDFLAGS="-L$(pwd)/lib/darwin_arm64 -lzvec_c_api -Wl,-rpath,$(pwd)/lib/darwin
 CGO_ENABLED=1 go build .
 ```
 
-Supported platforms: **Linux (x64, ARM64)**, **macOS (ARM64)**, **Windows (x64)**.
+Supported platforms: **Linux (x64, ARM64; glibc 2.28+ and musl/Alpine)**,
+**macOS (ARM64)**, **Windows (x64)**.
+
+On Linux, `download-libs` auto-detects musl-based systems (e.g. Alpine) and
+fetches the musl build; use `-libc glibc` or `-libc musl` to override.
+The Linux glibc builds target glibc 2.28 (manylinux_2_28), matching the
+upstream zvec prebuilt SDKs.
 
 Each pre-built archive also ships the jieba dictionaries under
 `lib/data/jieba_dict/` (needed by the `jieba` FTS tokenizer). `Initialize()`

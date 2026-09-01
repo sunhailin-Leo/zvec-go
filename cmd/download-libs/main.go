@@ -3,11 +3,13 @@
 //
 // Usage:
 //
-//	go run ./cmd/download-libs [-version v0.6.0] [-dest ./lib]
+//	go run ./cmd/download-libs [-version v0.6.0] [-dest ./lib] [-libc auto]
 //
 // If -version is not specified, it queries the GitHub Releases API to fetch the
 // latest published release tag.
 // If -dest is not specified, it defaults to ./lib relative to the module root.
+// On Linux, -libc selects the libc variant (auto, glibc, or musl); auto
+// detects musl-based systems (e.g. Alpine) and downloads the musl build.
 package main
 
 import (
@@ -45,12 +47,21 @@ var platformMap = map[string]platformArtifact{
 	"windows/amd64": {name: "zvec-libs-windows-x64.zip", isZip: true},
 }
 
+// muslPlatformMap holds the musl (Alpine) variants for Linux. They extract
+// to the same lib/<platform>/ layout; only the archive differs.
+var muslPlatformMap = map[string]platformArtifact{
+	"linux/amd64": {name: "zvec-libs-linux-musl-x64.tar.gz", isZip: false},
+	"linux/arm64": {name: "zvec-libs-linux-musl-arm64.tar.gz", isZip: false},
+}
+
 func main() {
 	var version string
 	var dest string
+	var libc string
 
 	flag.StringVar(&version, "version", "", "Library version to download (e.g. v0.6.0). Defaults to the latest GitHub release.")
 	flag.StringVar(&dest, "dest", "", "Destination directory for lib/. Defaults to ./lib relative to module root.")
+	flag.StringVar(&libc, "libc", "auto", "Linux libc variant: auto, glibc, or musl (auto-detects musl/Alpine systems).")
 	flag.Parse()
 
 	// Locate module root (directory containing this go.mod)
@@ -85,6 +96,25 @@ func main() {
 	artifact, ok := platformMap[key]
 	if !ok {
 		fatalf("Unsupported platform: %s\nSupported platforms: darwin/arm64, linux/amd64, linux/arm64, windows/amd64", key)
+	}
+
+	// On Linux, pick the musl archive when requested or auto-detected.
+	if runtime.GOOS == "linux" {
+		switch strings.ToLower(libc) {
+		case "auto":
+			if detectMusl() {
+				artifact = muslPlatformMap[key]
+				fmt.Println("Detected musl libc (e.g. Alpine); using the musl build.")
+			}
+		case "musl":
+			artifact = muslPlatformMap[key]
+		case "glibc":
+			// keep the default glibc artifact
+		default:
+			fatalf("Invalid -libc value %q: expected auto, glibc, or musl", libc)
+		}
+	} else if strings.ToLower(libc) == "musl" {
+		fatalf("-libc musl is only supported on Linux")
 	}
 
 	downloadURL := fmt.Sprintf("%s/%s/%s", baseURL, version, artifact.name)
@@ -122,6 +152,30 @@ func main() {
 }
 
 // findModuleRoot walks up from the current directory to find go.mod.
+// detectMusl reports whether the current Linux system uses musl libc. It
+// checks for the musl dynamic loader (/lib/ld-musl-<machine>.so.1, present
+// on Alpine and other musl distros) and falls back to /etc/os-release.
+func detectMusl() bool {
+	var machine string
+	switch runtime.GOARCH {
+	case "amd64":
+		machine = "x86_64"
+	case "arm64":
+		machine = "aarch64"
+	}
+	if machine != "" {
+		if _, err := os.Stat("/lib/ld-musl-" + machine + ".so.1"); err == nil {
+			return true
+		}
+	}
+	if data, err := os.ReadFile("/etc/os-release"); err == nil {
+		if strings.Contains(strings.ToLower(string(data)), "alpine") {
+			return true
+		}
+	}
+	return false
+}
+
 func findModuleRoot() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
