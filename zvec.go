@@ -50,11 +50,17 @@ import "unsafe"
 // Initialize initializes the zvec library with optional configuration.
 // Pass nil to use default configuration.
 // Must be called before any other zvec operations.
+//
+// When no process-wide default jieba dict directory has been set, Initialize
+// tries to locate the bundled jieba dictionaries (see FindJiebaDictDir) and
+// registers them via SetDefaultJiebaDictDir, so the `jieba` FTS tokenizer
+// works out of the box. Set ZVEC_DISABLE_AUTO_JIEBA_DICT=1 to opt out.
 func Initialize(config *ConfigData) error {
 	var cConfig *C.zvec_config_data_t
 	if config != nil {
 		cConfig = config.handle
 	}
+	ensureDefaultJiebaDictDir()
 	defer lockErrorThread()()
 	return toError(C.zvec_initialize(cConfig))
 }

@@ -96,6 +96,10 @@ CGO_ENABLED=1 go build .
 
 Supported platforms: **Linux (x64, ARM64)**, **macOS (ARM64)**, **Windows (x64)**.
 
+Each pre-built archive also ships the jieba dictionaries under
+`lib/data/jieba_dict/` (needed by the `jieba` FTS tokenizer). `Initialize()`
+locates them automatically — see [FTS](#fts-full-text-search) below.
+
 ### Mode 2: Source Mode (Build from Source)
 
 For developers who want to use a custom zvec version, contribute to the project, or build for unsupported platforms:
@@ -210,6 +214,11 @@ func main() {
 | `GetVersionMinor()` | Get the minor version number |
 | `GetVersionPatch()` | Get the patch version number |
 | `CheckVersion(major, minor, patch)` | Check if the version is compatible |
+| `FindJiebaDictDir()` | Locate the bundled jieba dictionary directory |
+| `SetDefaultJiebaDictDir(dir)` | Set the process-wide default jieba dict directory |
+| `GetDefaultJiebaDictDir()` | Get the process-wide default jieba dict directory |
+| `ConfigData.SetJiebaDictDir(dir)` | Set the jieba dict directory in a config |
+| `ConfigData.GetJiebaDictDir()` | Get the jieba dict directory from a config |
 
 ### Schema & Index
 
@@ -313,6 +322,14 @@ func main() {
 | `NewFTSQueryParams(op)` | Create FTS query parameters |
 | `SearchQuery.SetFTS(fts)` | Attach FTS payload to a search query |
 | `SearchQuery.SetFTSParams(params)` | Set FTS query parameters |
+
+The `jieba` tokenizer (for Chinese text) needs dictionary files
+(`jieba.dict.utf8` + `hmm_model.utf8`). The pre-built archives ship them under
+`lib/data/jieba_dict/`, and `Initialize()` automatically locates and registers
+them via `SetDefaultJiebaDictDir()`, so jieba-based FTS works out of the box.
+Dictionary resolution priority: per-field `jieba_dict_dir` extra param >
+`ZVEC_JIEBA_DICT_DIR` env var > the process-wide default. Set
+`ZVEC_DISABLE_AUTO_JIEBA_DICT=1` to disable the auto-registration.
 
 ### Multi-Query & Reranking
 

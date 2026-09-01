@@ -336,6 +336,11 @@ func (d DocOperator) String() string {
 }
 
 // Initialize initializes the zvec library with optional configuration.
+//
+// When no process-wide default jieba dict directory has been set, Initialize
+// tries to locate the bundled jieba dictionaries (see FindJiebaDictDir) and
+// registers them via SetDefaultJiebaDictDir, so the `jieba` FTS tokenizer
+// works out of the box. Set ZVEC_DISABLE_AUTO_JIEBA_DICT=1 to opt out.
 func Initialize(config *ConfigData) error {
 	api, err := puregoAPI()
 	if err != nil {
@@ -345,6 +350,7 @@ func Initialize(config *ConfigData) error {
 	if config != nil {
 		cConfig = config.handle
 	}
+	ensureDefaultJiebaDictDir()
 	defer lockErrorThread()()
 	return toError(api.initialize(cConfig))
 }

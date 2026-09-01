@@ -26,6 +26,7 @@ var (
 	puregoLoadMu        sync.Mutex
 	puregoLoaded        atomic.Bool
 	puregoHandle        uintptr
+	puregoLoadedLibPath string
 	puregoFns           zvecPuregoAPI
 	puregoBackendLoader = loadPuregoBackend
 )
@@ -338,6 +339,7 @@ func loadPuregoBackend() error {
 			continue
 		}
 		puregoHandle = handle
+		puregoLoadedLibPath = candidate
 		return nil
 	}
 	puregoFns = zvecPuregoAPI{}
