@@ -9,6 +9,20 @@ package zvec
 #include "zvec/c_api.h"
 #include <stdlib.h>
 #include <string.h>
+
+typedef struct {
+	zvec_error_code_t code;
+	const void *value;
+	size_t size;
+} zvec_go_field_result;
+
+static zvec_go_field_result zvec_go_get_field_pointer(const zvec_doc_t *doc,
+		const char *name, zvec_data_type_t data_type) {
+	zvec_go_field_result result = {0};
+	result.code = zvec_doc_get_field_value_pointer(doc, name, data_type,
+		&result.value, &result.size);
+	return result;
+}
 */
 import "C"
 import "unsafe"
@@ -245,147 +259,118 @@ func (d *Doc) IsEmpty() bool {
 func (d *Doc) GetStringField(name string) (string, error) {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
-	var cValue unsafe.Pointer
-	var valueSize C.size_t
 	defer lockErrorThread()()
-	err := toError(C.zvec_doc_get_field_value_pointer(
-		d.handle, cName, C.ZVEC_DATA_TYPE_STRING,
-		(*unsafe.Pointer)(unsafe.Pointer(&cValue)), &valueSize,
-	))
+	result := C.zvec_go_get_field_pointer(d.handle, cName, C.ZVEC_DATA_TYPE_STRING)
+	err := toError(result.code)
 	if err != nil {
 		return "", err
 	}
-	return C.GoStringN((*C.char)(cValue), C.int(valueSize)), nil
+	return C.GoStringN((*C.char)(unsafe.Pointer(result.value)), C.int(result.size)), nil
 }
 
 // GetBoolField returns the boolean value of a field.
 func (d *Doc) GetBoolField(name string) (bool, error) {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
-	var value C.bool
 	defer lockErrorThread()()
-	err := toError(C.zvec_doc_get_field_value_basic(
-		d.handle, cName, C.ZVEC_DATA_TYPE_BOOL,
-		unsafe.Pointer(&value), C.size_t(unsafe.Sizeof(value)),
-	))
+	result := C.zvec_go_get_field_pointer(d.handle, cName, C.ZVEC_DATA_TYPE_BOOL)
+	err := toError(result.code)
 	if err != nil {
 		return false, err
 	}
-	return bool(value), nil
+	return bool(*(*C.bool)(unsafe.Pointer(result.value))), nil
 }
 
 // GetInt32Field returns the int32 value of a field.
 func (d *Doc) GetInt32Field(name string) (int32, error) {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
-	var value C.int32_t
 	defer lockErrorThread()()
-	err := toError(C.zvec_doc_get_field_value_basic(
-		d.handle, cName, C.ZVEC_DATA_TYPE_INT32,
-		unsafe.Pointer(&value), C.size_t(unsafe.Sizeof(value)),
-	))
+	result := C.zvec_go_get_field_pointer(d.handle, cName, C.ZVEC_DATA_TYPE_INT32)
+	err := toError(result.code)
 	if err != nil {
 		return 0, err
 	}
-	return int32(value), nil
+	return *(*int32)(unsafe.Pointer(result.value)), nil
 }
 
 // GetInt64Field returns the int64 value of a field.
 func (d *Doc) GetInt64Field(name string) (int64, error) {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
-	var value C.int64_t
 	defer lockErrorThread()()
-	err := toError(C.zvec_doc_get_field_value_basic(
-		d.handle, cName, C.ZVEC_DATA_TYPE_INT64,
-		unsafe.Pointer(&value), C.size_t(unsafe.Sizeof(value)),
-	))
+	result := C.zvec_go_get_field_pointer(d.handle, cName, C.ZVEC_DATA_TYPE_INT64)
+	err := toError(result.code)
 	if err != nil {
 		return 0, err
 	}
-	return int64(value), nil
+	return *(*int64)(unsafe.Pointer(result.value)), nil
 }
 
 // GetUint32Field returns the uint32 value of a field.
 func (d *Doc) GetUint32Field(name string) (uint32, error) {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
-	var value C.uint32_t
 	defer lockErrorThread()()
-	err := toError(C.zvec_doc_get_field_value_basic(
-		d.handle, cName, C.ZVEC_DATA_TYPE_UINT32,
-		unsafe.Pointer(&value), C.size_t(unsafe.Sizeof(value)),
-	))
+	result := C.zvec_go_get_field_pointer(d.handle, cName, C.ZVEC_DATA_TYPE_UINT32)
+	err := toError(result.code)
 	if err != nil {
 		return 0, err
 	}
-	return uint32(value), nil
+	return *(*uint32)(unsafe.Pointer(result.value)), nil
 }
 
 // GetUint64Field returns the uint64 value of a field.
 func (d *Doc) GetUint64Field(name string) (uint64, error) {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
-	var value C.uint64_t
 	defer lockErrorThread()()
-	err := toError(C.zvec_doc_get_field_value_basic(
-		d.handle, cName, C.ZVEC_DATA_TYPE_UINT64,
-		unsafe.Pointer(&value), C.size_t(unsafe.Sizeof(value)),
-	))
+	result := C.zvec_go_get_field_pointer(d.handle, cName, C.ZVEC_DATA_TYPE_UINT64)
+	err := toError(result.code)
 	if err != nil {
 		return 0, err
 	}
-	return uint64(value), nil
+	return *(*uint64)(unsafe.Pointer(result.value)), nil
 }
 
 // GetFloatField returns the float32 value of a field.
 func (d *Doc) GetFloatField(name string) (float32, error) {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
-	var value C.float
 	defer lockErrorThread()()
-	err := toError(C.zvec_doc_get_field_value_basic(
-		d.handle, cName, C.ZVEC_DATA_TYPE_FLOAT,
-		unsafe.Pointer(&value), C.size_t(unsafe.Sizeof(value)),
-	))
+	result := C.zvec_go_get_field_pointer(d.handle, cName, C.ZVEC_DATA_TYPE_FLOAT)
+	err := toError(result.code)
 	if err != nil {
 		return 0, err
 	}
-	return float32(value), nil
+	return *(*float32)(unsafe.Pointer(result.value)), nil
 }
 
 // GetDoubleField returns the float64 value of a field.
 func (d *Doc) GetDoubleField(name string) (float64, error) {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
-	var value C.double
 	defer lockErrorThread()()
-	err := toError(C.zvec_doc_get_field_value_basic(
-		d.handle, cName, C.ZVEC_DATA_TYPE_DOUBLE,
-		unsafe.Pointer(&value), C.size_t(unsafe.Sizeof(value)),
-	))
+	result := C.zvec_go_get_field_pointer(d.handle, cName, C.ZVEC_DATA_TYPE_DOUBLE)
+	err := toError(result.code)
 	if err != nil {
 		return 0, err
 	}
-	return float64(value), nil
+	return *(*float64)(unsafe.Pointer(result.value)), nil
 }
 
 // GetVectorFP32Field returns the float32 vector value of a field.
 func (d *Doc) GetVectorFP32Field(name string) ([]float32, error) {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
-	var cValue unsafe.Pointer
-	var valueSize C.size_t
 	defer lockErrorThread()()
-	err := toError(C.zvec_doc_get_field_value_pointer(
-		d.handle, cName, C.ZVEC_DATA_TYPE_VECTOR_FP32,
-		(*unsafe.Pointer)(unsafe.Pointer(&cValue)), &valueSize,
-	))
+	field := C.zvec_go_get_field_pointer(d.handle, cName, C.ZVEC_DATA_TYPE_VECTOR_FP32)
+	err := toError(field.code)
 	if err != nil {
 		return nil, err
 	}
-	count := int(valueSize) / 4
-	cSlice := unsafe.Slice((*float32)(cValue), count)
+	count := int(field.size) / 4
+	cSlice := unsafe.Slice((*float32)(unsafe.Pointer(field.value)), count)
 	result := make([]float32, count)
 	copy(result, cSlice)
 	return result, nil
@@ -396,23 +381,19 @@ func (d *Doc) GetVectorFP32Field(name string) ([]float32, error) {
 func (d *Doc) GetVectorFP32FieldInto(name string, dst []float32) ([]float32, error) {
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
-	var value unsafe.Pointer
-	var valueSize C.size_t
 	defer lockErrorThread()()
-	err := toError(C.zvec_doc_get_field_value_pointer(
-		d.handle, cName, C.ZVEC_DATA_TYPE_VECTOR_FP32,
-		(*unsafe.Pointer)(unsafe.Pointer(&value)), &valueSize,
-	))
+	result := C.zvec_go_get_field_pointer(d.handle, cName, C.ZVEC_DATA_TYPE_VECTOR_FP32)
+	err := toError(result.code)
 	if err != nil {
 		return nil, err
 	}
-	count := int(valueSize) / 4
+	count := int(result.size) / 4
 	if cap(dst) < count {
 		dst = make([]float32, count)
 	} else {
 		dst = dst[:count]
 	}
-	copy(dst, unsafe.Slice((*float32)(value), count))
+	copy(dst, unsafe.Slice((*float32)(unsafe.Pointer(result.value)), count))
 	return dst, nil
 }
 
