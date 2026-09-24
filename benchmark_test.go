@@ -354,10 +354,11 @@ func BenchmarkCollectionQuery(b *testing.B) {
 	_ = query.SetQueryVector(queryVector)
 
 	for i := 0; i < b.N; i++ {
-		_, err := collection.Query(query)
+		docs, err := collection.Query(query)
 		if err != nil {
 			b.Fatalf("Failed to query collection: %v", err)
 		}
+		FreeDocs(docs)
 	}
 }
 
@@ -400,9 +401,10 @@ func BenchmarkCollectionFetch(b *testing.B) {
 	// Benchmark fetch
 	for i := 0; i < b.N; i++ {
 		pk := fmt.Sprintf("doc_%d", i%100)
-		_, err := collection.Fetch([]string{pk}, nil)
+		docs, err := collection.Fetch([]string{pk}, nil)
 		if err != nil {
 			b.Fatalf("Failed to fetch document: %v", err)
 		}
+		FreeDocs(docs)
 	}
 }

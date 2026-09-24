@@ -412,22 +412,11 @@ func (c *Collection) Query(query *SearchQuery) ([]*Doc, error) {
 	var resultCount C.size_t
 	defer lockErrorThread()()
 	err := toError(C.zvec_collection_query(c.handle, query.handle, &cResults, &resultCount))
+	defer C.zvec_free(unsafe.Pointer(cResults))
 	if err != nil {
 		return nil, err
 	}
-
-	count := int(resultCount)
-	if count == 0 {
-		return nil, nil
-	}
-
-	resultSlice := unsafe.Slice(cResults, count)
-	docs := make([]*Doc, count)
-	for i := 0; i < count; i++ {
-		docs[i] = &Doc{handle: resultSlice[i]}
-	}
-	C.zvec_free(unsafe.Pointer(cResults))
-	return docs, nil
+	return wrapCResultDocs(cResults, resultCount), nil
 }
 
 // MultiQuery performs a multi-query search combining multiple sub-queries.
@@ -438,22 +427,26 @@ func (c *Collection) MultiQuery(query *MultiQuery) ([]*Doc, error) {
 	var resultCount C.size_t
 	defer lockErrorThread()()
 	err := toError(C.zvec_collection_multi_query(c.handle, query.handle, &cResults, &resultCount))
+	defer C.zvec_free(unsafe.Pointer(cResults))
 	if err != nil {
 		return nil, err
 	}
+	return wrapCResultDocs(cResults, resultCount), nil
+}
 
+func wrapCResultDocs(results **C.zvec_doc_t, resultCount C.size_t) []*Doc {
 	count := int(resultCount)
 	if count == 0 {
-		return nil, nil
+		return nil
 	}
-
-	resultSlice := unsafe.Slice(cResults, count)
+	resultSlice := unsafe.Slice(results, count)
 	docs := make([]*Doc, count)
-	for i := 0; i < count; i++ {
-		docs[i] = &Doc{handle: resultSlice[i]}
+	storage := make([]Doc, count)
+	for index := range docs {
+		storage[index] = Doc{handle: resultSlice[index]}
+		docs[index] = &storage[index]
 	}
-	C.zvec_free(unsafe.Pointer(cResults))
-	return docs, nil
+	return docs
 }
 
 // FetchOptions controls optional parameters for Fetch.
@@ -471,14 +464,32 @@ func (c *Collection) Fetch(primaryKeys []string, opts *FetchOptions) ([]*Doc, er
 		return nil, nil
 	}
 	cPKs := make([]*C.char, len(primaryKeys))
-	for i, pk := range primaryKeys {
-		cPKs[i] = C.CString(pk)
-	}
-	defer func() {
-		for _, cPK := range cPKs {
-			C.free(unsafe.Pointer(cPK))
+	if len(primaryKeys) == 1 {
+		cPKs[0] = C.CString(primaryKeys[0])
+		defer C.free(unsafe.Pointer(cPKs[0]))
+	} else {
+		totalBytes := len(primaryKeys)
+		maxInt := int(^uint(0) >> 1)
+		for _, primaryKey := range primaryKeys {
+			if len(primaryKey) > maxInt-totalBytes {
+				return nil, &Error{Code: InvalidArgument, Message: "primary keys are too large"}
+			}
+			totalBytes += len(primaryKey)
 		}
-	}()
+		buffer := C.malloc(C.size_t(totalBytes))
+		if buffer == nil {
+			return nil, &Error{Code: ResourceExhausted, Message: "failed to allocate primary key buffer"}
+		}
+		defer C.free(buffer)
+		bytes := unsafe.Slice((*byte)(buffer), totalBytes)
+		offset := 0
+		for index, primaryKey := range primaryKeys {
+			cPKs[index] = (*C.char)(unsafe.Add(buffer, offset))
+			offset += copy(bytes[offset:], primaryKey)
+			bytes[offset] = 0
+			offset++
+		}
+	}
 
 	var cOutputFields **C.char
 	var outputFieldCount C.size_t
@@ -513,22 +524,11 @@ func (c *Collection) Fetch(primaryKeys []string, opts *FetchOptions) ([]*Doc, er
 		&cDocs,
 		&foundCount,
 	))
+	defer C.zvec_free(unsafe.Pointer(cDocs))
 	if err != nil {
 		return nil, err
 	}
-
-	count := int(foundCount)
-	if count == 0 {
-		return nil, nil
-	}
-
-	resultSlice := unsafe.Slice(cDocs, count)
-	docs := make([]*Doc, count)
-	for i := 0; i < count; i++ {
-		docs[i] = &Doc{handle: resultSlice[i]}
-	}
-	C.zvec_free(unsafe.Pointer(cDocs))
-	return docs, nil
+	return wrapCResultDocs(cDocs, foundCount), nil
 }
 
 // FreeDocs is a convenience function to destroy multiple documents at once.

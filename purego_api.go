@@ -1887,8 +1887,10 @@ func wrapDocResults(cResults unsafe.Pointer, count uintptr) []*Doc {
 	}
 	resultSlice := unsafe.Slice((*unsafe.Pointer)(cResults), int(count))
 	docs := make([]*Doc, int(count))
-	for i := 0; i < int(count); i++ {
-		docs[i] = &Doc{handle: resultSlice[i]}
+	storage := make([]Doc, len(docs))
+	for index := range docs {
+		storage[index] = Doc{handle: resultSlice[index]}
+		docs[index] = &storage[index]
 	}
 	// Match the cgo wrapper: free only the returned pointer array here; callers
 	// still own and must Destroy/FreeDocs the individual document handles.
@@ -2168,6 +2170,23 @@ func (d *Doc) GetVectorFP32Field(name string) ([]float32, error) {
 	out := make([]float32, count)
 	copy(out, values)
 	return out, nil
+}
+
+// GetVectorFP32FieldInto copies a vector into dst, growing it when needed.
+// The returned slice remains valid after the document is destroyed.
+func (d *Doc) GetVectorFP32FieldInto(name string, dst []float32) ([]float32, error) {
+	ptr, size, err := d.getFieldPointer(name, DataTypeVectorFP32)
+	if err != nil {
+		return nil, err
+	}
+	count := int(size) / 4
+	if cap(dst) < count {
+		dst = make([]float32, count)
+	} else {
+		dst = dst[:count]
+	}
+	copy(dst, unsafe.Slice((*float32)(ptr), count))
+	return dst, nil
 }
 
 func (d *Doc) getFieldBasic(name string, fieldType DataType, value unsafe.Pointer, size uintptr) error {
@@ -3513,9 +3532,18 @@ func nullTerminatedBytes(value string) []byte {
 func cStringArray(values []string) ([]unsafe.Pointer, [][]byte) {
 	ptrs := make([]unsafe.Pointer, len(values))
 	keep := make([][]byte, len(values))
+	totalBytes := len(values)
+	for _, value := range values {
+		totalBytes += len(value)
+	}
+	buffer := make([]byte, totalBytes)
+	offset := 0
 	for i, value := range values {
-		keep[i] = nullTerminatedBytes(value)
+		end := offset + len(value)
+		keep[i] = buffer[offset : end+1 : end+1]
+		copy(keep[i], value)
 		ptrs[i] = unsafe.Pointer(&keep[i][0])
+		offset = end + 1
 	}
 	return ptrs, keep
 }
