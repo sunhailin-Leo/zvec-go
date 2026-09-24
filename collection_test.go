@@ -3,6 +3,7 @@
 package zvec
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -638,6 +639,38 @@ func TestCollectionQuery(t *testing.T) {
 	}
 }
 
+func TestCollectionQueryEmptyResults(test *testing.T) {
+	schema := createTestSchema()
+	defer schema.Destroy()
+
+	collection, err := CreateAndOpen(test.TempDir()+"/test_collection", schema, nil)
+	if err != nil {
+		test.Fatalf("CreateAndOpen() failed: %v", err)
+	}
+	defer func() { _ = collection.Close() }()
+
+	query := NewVectorQuery()
+	defer query.Destroy()
+	if err := query.SetFieldName("embedding"); err != nil {
+		test.Fatalf("SetFieldName() failed: %v", err)
+	}
+	if err := query.SetQueryVector([]float32{0.1, 0.2, 0.3, 0.4}); err != nil {
+		test.Fatalf("SetQueryVector() failed: %v", err)
+	}
+	if err := query.SetTopK(10); err != nil {
+		test.Fatalf("SetTopK() failed: %v", err)
+	}
+
+	results, err := collection.Query(query)
+	if err != nil {
+		test.Fatalf("Query() failed: %v", err)
+	}
+	defer FreeDocs(results)
+	if len(results) != 0 {
+		test.Errorf("Query() returned %d documents, want 0", len(results))
+	}
+}
+
 func TestCollectionFetch(t *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()
@@ -686,6 +719,99 @@ func TestCollectionFetch(t *testing.T) {
 	pk := doc1.GetPK()
 	if pk != "doc1" && pk != "doc2" {
 		t.Errorf("First fetched document has unexpected PK: %s", pk)
+	}
+}
+
+func TestCollectionFetchPartialResults(test *testing.T) {
+	schema := createTestSchema()
+	defer schema.Destroy()
+
+	collection, err := CreateAndOpen(test.TempDir()+"/test_collection", schema, nil)
+	if err != nil {
+		test.Fatalf("CreateAndOpen() failed: %v", err)
+	}
+	defer func() { _ = collection.Close() }()
+
+	docs := []*Doc{
+		createTestDoc("doc1", "hello", []float32{0.1, 0.2, 0.3, 0.4}),
+		createTestDoc("doc2", "world", []float32{0.5, 0.6, 0.7, 0.8}),
+	}
+	defer FreeDocs(docs)
+	if _, err := collection.Insert(docs); err != nil {
+		test.Fatalf("Insert() failed: %v", err)
+	}
+
+	results, err := collection.Fetch([]string{"doc1", "missing", "doc2"})
+	if err != nil {
+		test.Fatalf("Fetch() failed: %v", err)
+	}
+	defer FreeDocs(results)
+	if len(results) != 2 {
+		test.Fatalf("Fetch() returned %d documents, want 2", len(results))
+	}
+	found := make(map[string]bool, len(results))
+	for _, doc := range results {
+		if doc == nil {
+			test.Fatal("Fetch() returned a nil document")
+		}
+		found[doc.GetPK()] = true
+	}
+	if !found["doc1"] || !found["doc2"] {
+		test.Errorf("Fetch() returned document keys %v, want doc1 and doc2", found)
+	}
+	results[0].Destroy()
+	if results[1].GetPK() == "" {
+		test.Error("Destroying one fetched document invalidated another")
+	}
+
+	missing, err := collection.Fetch([]string{"missing"})
+	if err != nil {
+		test.Fatalf("Fetch() for missing key failed: %v", err)
+	}
+	defer FreeDocs(missing)
+	if len(missing) != 0 {
+		test.Errorf("Fetch() returned %d documents for missing key, want 0", len(missing))
+	}
+}
+
+func TestCollectionFetchVariableLengthPrimaryKeys(test *testing.T) {
+	schema := createTestSchema()
+	defer schema.Destroy()
+	collection, err := CreateAndOpen(test.TempDir()+"/test_collection", schema, nil)
+	if err != nil {
+		test.Fatalf("CreateAndOpen() failed: %v", err)
+	}
+	defer func() { _ = collection.Close() }()
+
+	primaryKeys := []string{"a", "longer-key", "with.period+plus", strings.Repeat("x", 64)}
+	docs := make([]*Doc, len(primaryKeys))
+	for index, primaryKey := range primaryKeys {
+		docs[index] = createTestDoc(primaryKey, "hello", []float32{1, 2, 3, 4})
+	}
+	defer FreeDocs(docs)
+	if _, err := collection.Insert(docs); err != nil {
+		test.Fatalf("Insert() failed: %v", err)
+	}
+
+	results, err := collection.Fetch(primaryKeys)
+	if err != nil {
+		test.Fatalf("Fetch() failed: %v", err)
+	}
+	defer FreeDocs(results)
+	if len(results) != len(primaryKeys) {
+		test.Fatalf("Fetch() returned %d documents, want %d", len(results), len(primaryKeys))
+	}
+	found := make(map[string]bool, len(results))
+	for _, doc := range results {
+		if doc == nil {
+			test.Fatal("Fetch() returned a nil document")
+		}
+		found[doc.GetPK()] = true
+	}
+	for _, primaryKey := range primaryKeys {
+		if !found[primaryKey] {
+			test.Errorf("Fetch() did not return primary key %q", primaryKey)
+		}
 	}
 }
 

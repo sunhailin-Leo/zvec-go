@@ -374,6 +374,69 @@ func TestDocVectorFP32Field(t *testing.T) {
 	}
 }
 
+func TestDocGetVectorFP32FieldIntoReusesStorage(test *testing.T) {
+	doc := NewDoc()
+	if doc == nil {
+		test.Fatal("NewDoc() returned nil")
+	}
+	defer doc.Destroy()
+	want := []float32{1, 2, 3, 4, 5}
+	if err := doc.AddVectorFP32Field("embedding", want); err != nil {
+		test.Fatalf("AddVectorFP32Field() failed: %v", err)
+	}
+
+	buffer := make([]float32, 1, 8)
+	buffer[0] = -1
+	got, err := doc.GetVectorFP32FieldInto("embedding", buffer)
+	if err != nil {
+		test.Fatalf("GetVectorFP32FieldInto() failed: %v", err)
+	}
+	if len(got) != len(want) || &got[0] != &buffer[0] {
+		test.Fatalf("GetVectorFP32FieldInto() did not reuse buffer: len=%d, cap=%d", len(got), cap(got))
+	}
+	for index, value := range want {
+		if got[index] != value {
+			test.Errorf("vector[%d] = %v, want %v", index, got[index], value)
+		}
+	}
+	doc.Destroy()
+	if got[0] != want[0] || got[4] != want[4] {
+		test.Error("returned vector no longer readable after Doc.Destroy()")
+	}
+}
+
+func TestDocGetVectorFP32FieldIntoGrowthAndError(test *testing.T) {
+	doc := NewDoc()
+	if doc == nil {
+		test.Fatal("NewDoc() returned nil")
+	}
+	defer doc.Destroy()
+	if err := doc.AddVectorFP32Field("embedding", []float32{1, 2, 3, 4}); err != nil {
+		test.Fatalf("AddVectorFP32Field() failed: %v", err)
+	}
+
+	small := []float32{-1, -1}
+	got, err := doc.GetVectorFP32FieldInto("embedding", small)
+	if err != nil {
+		test.Fatalf("GetVectorFP32FieldInto() with small buffer failed: %v", err)
+	}
+	if len(got) != 4 || got[0] != 1 || got[3] != 4 {
+		test.Errorf("GetVectorFP32FieldInto() returned %v, want [1 2 3 4]", got)
+	}
+	if small[0] != -1 {
+		test.Error("GetVectorFP32FieldInto() overwrote undersized input buffer")
+	}
+
+	input := []float32{99, 88}
+	result, err := doc.GetVectorFP32FieldInto("missing", input)
+	if err == nil || result != nil {
+		test.Errorf("GetVectorFP32FieldInto() missing field = %v, %v, want nil and error", result, err)
+	}
+	if input[0] != 99 || input[1] != 88 {
+		test.Error("GetVectorFP32FieldInto() modified input after an error")
+	}
+}
+
 // TestDocVectorFP32FieldEmpty tests that AddVectorFP32Field with empty slice returns error.
 func TestDocVectorFP32FieldEmpty(t *testing.T) {
 	doc := NewDoc()

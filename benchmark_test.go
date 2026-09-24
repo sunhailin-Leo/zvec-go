@@ -342,22 +342,31 @@ func BenchmarkCollectionQuery(b *testing.B) {
 	if err := collection.Flush(); err != nil {
 		b.Fatalf("Failed to flush collection: %v", err)
 	}
-	b.StartTimer()
 
 	// Benchmark query
 	query := NewVectorQuery()
 	defer query.Destroy()
-	_ = query.SetFieldName("embedding")
-	_ = query.SetTopK(10)
+	if err := query.SetFieldName("embedding"); err != nil {
+		b.Fatalf("Failed to set query field name: %v", err)
+	}
+	if err := query.SetTopK(10); err != nil {
+		b.Fatalf("Failed to set query top K: %v", err)
+	}
 	queryVector := generateRandomVector(128)
-	_ = query.SetQueryVector(queryVector)
+	if err := query.SetQueryVector(queryVector); err != nil {
+		b.Fatalf("Failed to set query vector: %v", err)
+	}
 
-	for i := 0; i < b.N; i++ {
-		_, err := collection.Query(query)
+	b.ResetTimer()
+	b.StartTimer()
+	for iteration := 0; iteration < b.N; iteration++ {
+		docs, err := collection.Query(query)
 		if err != nil {
 			b.Fatalf("Failed to query collection: %v", err)
 		}
+		FreeDocs(docs)
 	}
+	b.StopTimer()
 }
 
 func BenchmarkCollectionFetch(b *testing.B) {
@@ -394,14 +403,20 @@ func BenchmarkCollectionFetch(b *testing.B) {
 	if err := collection.Flush(); err != nil {
 		b.Fatalf("Failed to flush collection: %v", err)
 	}
-	b.StartTimer()
 
 	// Benchmark fetch
-	for i := 0; i < b.N; i++ {
-		pk := fmt.Sprintf("doc_%d", i%100)
-		_, err := collection.Fetch([]string{pk})
+	primaryKeys := make([][]string, 100)
+	for index := range primaryKeys {
+		primaryKeys[index] = []string{fmt.Sprintf("doc_%d", index)}
+	}
+	b.ResetTimer()
+	b.StartTimer()
+	for iteration := 0; iteration < b.N; iteration++ {
+		docs, err := collection.Fetch(primaryKeys[iteration%len(primaryKeys)])
 		if err != nil {
 			b.Fatalf("Failed to fetch document: %v", err)
 		}
+		FreeDocs(docs)
 	}
+	b.StopTimer()
 }

@@ -367,6 +367,30 @@ func (d *Doc) GetVectorFP32Field(name string) ([]float32, error) {
 	return result, nil
 }
 
+// GetVectorFP32FieldInto copies a vector into dst, growing it when capacity is insufficient.
+// The returned data is independent of the document and remains valid after Destroy.
+func (d *Doc) GetVectorFP32FieldInto(name string, dst []float32) ([]float32, error) {
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+	var cValue unsafe.Pointer
+	var valueSize C.size_t
+	err := toError(C.zvec_doc_get_field_value_pointer(
+		d.handle, cName, C.ZVEC_DATA_TYPE_VECTOR_FP32,
+		(*unsafe.Pointer)(unsafe.Pointer(&cValue)), &valueSize,
+	))
+	if err != nil {
+		return nil, err
+	}
+	count := int(valueSize) / 4
+	if cap(dst) < count {
+		dst = make([]float32, count)
+	} else {
+		dst = dst[:count]
+	}
+	copy(dst, unsafe.Slice((*float32)(cValue), count))
+	return dst, nil
+}
+
 // HasField returns true if the document has a field with the given name.
 func (d *Doc) HasField(name string) bool {
 	cName := C.CString(name)

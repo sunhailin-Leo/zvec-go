@@ -378,6 +378,7 @@ func (c *Collection) Query(query *VectorQuery) ([]*Doc, error) {
 	var cResults **C.zvec_doc_t
 	var resultCount C.size_t
 	err := toError(C.zvec_collection_query(c.handle, query.handle, &cResults, &resultCount))
+	defer C.zvec_free(unsafe.Pointer(cResults))
 	if err != nil {
 		return nil, err
 	}
@@ -389,8 +390,10 @@ func (c *Collection) Query(query *VectorQuery) ([]*Doc, error) {
 
 	resultSlice := unsafe.Slice(cResults, count)
 	docs := make([]*Doc, count)
-	for i := 0; i < count; i++ {
-		docs[i] = &Doc{handle: resultSlice[i], owned: true}
+	docStorage := make([]Doc, count)
+	for index := range docs {
+		docStorage[index] = Doc{handle: resultSlice[index], owned: true}
+		docs[index] = &docStorage[index]
 	}
 	return docs, nil
 }
@@ -403,14 +406,32 @@ func (c *Collection) Fetch(primaryKeys []string) ([]*Doc, error) {
 		return nil, nil
 	}
 	cPKs := make([]*C.char, len(primaryKeys))
-	for i, pk := range primaryKeys {
-		cPKs[i] = C.CString(pk)
-	}
-	defer func() {
-		for _, cPK := range cPKs {
-			C.free(unsafe.Pointer(cPK))
+	if len(primaryKeys) == 1 {
+		cPKs[0] = C.CString(primaryKeys[0])
+		defer C.free(unsafe.Pointer(cPKs[0]))
+	} else {
+		totalBytes := len(primaryKeys)
+		maxInt := int(^uint(0) >> 1)
+		for _, primaryKey := range primaryKeys {
+			if len(primaryKey) > maxInt-totalBytes {
+				return nil, &Error{Code: ErrInvalidArgument, Message: "primary keys are too large"}
+			}
+			totalBytes += len(primaryKey)
 		}
-	}()
+		cPKBuffer := C.malloc(C.size_t(totalBytes))
+		if cPKBuffer == nil {
+			return nil, &Error{Code: ErrResourceExhausted, Message: "failed to allocate primary key buffer"}
+		}
+		defer C.free(cPKBuffer)
+		cBytes := unsafe.Slice((*byte)(cPKBuffer), totalBytes)
+		offset := 0
+		for index, primaryKey := range primaryKeys {
+			cPKs[index] = (*C.char)(unsafe.Add(cPKBuffer, offset))
+			offset += copy(cBytes[offset:], primaryKey)
+			cBytes[offset] = 0
+			offset++
+		}
+	}
 
 	var cDocs **C.zvec_doc_t
 	var foundCount C.size_t
@@ -421,6 +442,7 @@ func (c *Collection) Fetch(primaryKeys []string) ([]*Doc, error) {
 		&cDocs,
 		&foundCount,
 	))
+	defer C.zvec_free(unsafe.Pointer(cDocs))
 	if err != nil {
 		return nil, err
 	}
@@ -432,8 +454,10 @@ func (c *Collection) Fetch(primaryKeys []string) ([]*Doc, error) {
 
 	resultSlice := unsafe.Slice(cDocs, count)
 	docs := make([]*Doc, count)
-	for i := 0; i < count; i++ {
-		docs[i] = &Doc{handle: resultSlice[i], owned: true}
+	docStorage := make([]Doc, count)
+	for index := range docs {
+		docStorage[index] = Doc{handle: resultSlice[index], owned: true}
+		docs[index] = &docStorage[index]
 	}
 	return docs, nil
 }
