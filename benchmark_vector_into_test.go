@@ -42,3 +42,35 @@ func BenchmarkDocGetVectorFP32FieldComparison(benchmark *testing.B) {
 		})
 	}
 }
+
+func BenchmarkDocGetFixedFields(benchmark *testing.B) {
+	document := NewDoc()
+	if document == nil {
+		benchmark.Fatal("NewDoc() returned nil")
+	}
+	benchmark.Cleanup(document.Destroy)
+	if err := document.AddStringField("content", "benchmark content"); err != nil {
+		benchmark.Fatalf("AddStringField() failed: %v", err)
+	}
+	if err := document.AddInt64Field("count", 42); err != nil {
+		benchmark.Fatalf("AddInt64Field() failed: %v", err)
+	}
+	benchmark.Run("String", func(fieldBenchmark *testing.B) {
+		fieldBenchmark.ReportAllocs()
+		for iteration := 0; iteration < fieldBenchmark.N; iteration++ {
+			value, err := document.GetStringField("content")
+			if err != nil || value != "benchmark content" {
+				fieldBenchmark.Fatalf("GetStringField() returned %q, err=%v", value, err)
+			}
+		}
+	})
+	benchmark.Run("Int64", func(fieldBenchmark *testing.B) {
+		fieldBenchmark.ReportAllocs()
+		for iteration := 0; iteration < fieldBenchmark.N; iteration++ {
+			value, err := document.GetInt64Field("count")
+			if err != nil || value != 42 {
+				fieldBenchmark.Fatalf("GetInt64Field() returned %d, err=%v", value, err)
+			}
+		}
+	})
+}

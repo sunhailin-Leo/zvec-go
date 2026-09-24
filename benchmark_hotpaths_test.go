@@ -121,3 +121,107 @@ func BenchmarkCollectionFetchHotpath(benchmark *testing.B) {
 		})
 	}
 }
+
+func BenchmarkCollectionQueryPhases(benchmark *testing.B) {
+	collection, _ := benchmarkHotpathCollection(benchmark, 128, 256)
+	query := NewSearchQuery()
+	if query == nil {
+		benchmark.Fatal("NewSearchQuery() returned nil")
+	}
+	benchmark.Cleanup(query.Destroy)
+	if err := query.SetFieldName("embedding"); err != nil {
+		benchmark.Fatalf("SetFieldName() failed: %v", err)
+	}
+	if err := query.SetTopK(100); err != nil {
+		benchmark.Fatalf("SetTopK() failed: %v", err)
+	}
+	if err := query.SetQueryVector(generateRandomVector(128)); err != nil {
+		benchmark.Fatalf("SetQueryVector() failed: %v", err)
+	}
+
+	benchmark.Run("QueryOnly", func(phaseBenchmark *testing.B) {
+		phaseBenchmark.ReportAllocs()
+		for iteration := 0; iteration < phaseBenchmark.N; iteration++ {
+			docs, err := collection.Query(query)
+			if err != nil {
+				phaseBenchmark.Fatalf("Query() failed: %v", err)
+			}
+			phaseBenchmark.StopTimer()
+			FreeDocs(docs)
+			phaseBenchmark.StartTimer()
+		}
+	})
+	benchmark.Run("FreeDocsOnly", func(phaseBenchmark *testing.B) {
+		phaseBenchmark.ReportAllocs()
+		for iteration := 0; iteration < phaseBenchmark.N; iteration++ {
+			phaseBenchmark.StopTimer()
+			docs, err := collection.Query(query)
+			if err != nil {
+				phaseBenchmark.Fatalf("Query() failed: %v", err)
+			}
+			phaseBenchmark.StartTimer()
+			FreeDocs(docs)
+		}
+	})
+}
+
+func BenchmarkCollectionFetchUniqueKeys(benchmark *testing.B) {
+	collection, keys := benchmarkHotpathCollection(benchmark, 128, 1000)
+	benchmark.ReportAllocs()
+	benchmark.ResetTimer()
+	for iteration := 0; iteration < benchmark.N; iteration++ {
+		docs, err := collection.Fetch(keys, nil)
+		if err != nil {
+			benchmark.Fatalf("Fetch() failed: %v", err)
+		}
+		if len(docs) != len(keys) {
+			FreeDocs(docs)
+			benchmark.Fatalf("Fetch() returned %d documents, want %d", len(docs), len(keys))
+		}
+		FreeDocs(docs)
+	}
+}
+
+func BenchmarkCollectionDeleteKeys(benchmark *testing.B) {
+	for _, count := range []int{1, 10, 100, 1000} {
+		benchmark.Run(fmt.Sprintf("Keys%d", count), func(deleteBenchmark *testing.B) {
+			collection, keys := benchmarkHotpathCollection(deleteBenchmark, 128, count)
+			vector := make([]float32, 128)
+			docs := make([]*Doc, count)
+			for index, key := range keys {
+				doc := NewDoc()
+				if doc == nil {
+					FreeDocs(docs)
+					deleteBenchmark.Fatal("NewDoc() returned nil")
+				}
+				docs[index] = doc
+				doc.SetPK(key)
+				if err := doc.AddStringField("id", key); err != nil {
+					FreeDocs(docs)
+					deleteBenchmark.Fatalf("AddStringField() failed: %v", err)
+				}
+				if err := doc.AddVectorFP32Field("embedding", vector); err != nil {
+					FreeDocs(docs)
+					deleteBenchmark.Fatalf("AddVectorFP32Field() failed: %v", err)
+				}
+			}
+			deleteBenchmark.Cleanup(func() { FreeDocs(docs) })
+			deleteBenchmark.ReportAllocs()
+			deleteBenchmark.ResetTimer()
+			for iteration := 0; iteration < deleteBenchmark.N; iteration++ {
+				if iteration > 0 {
+					deleteBenchmark.StopTimer()
+					result, err := collection.Insert(docs)
+					if err != nil || result.ErrorCount != 0 {
+						deleteBenchmark.Fatalf("Insert() returned result=%v, err=%v", result, err)
+					}
+					deleteBenchmark.StartTimer()
+				}
+				result, err := collection.Delete(keys)
+				if err != nil || result.SuccessCount != uint64(count) {
+					deleteBenchmark.Fatalf("Delete() returned result=%v, err=%v", result, err)
+				}
+			}
+		})
+	}
+}
