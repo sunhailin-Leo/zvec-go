@@ -1716,7 +1716,7 @@ func (c *Collection) Fetch(primaryKeys []string, opts *FetchOptions) ([]*Doc, er
 	}
 	pkPtrs, pkKeep := cStringArray(primaryKeys)
 	var fieldPtrs []unsafe.Pointer
-	var fieldKeep [][]byte
+	var fieldKeep []byte
 	var cOutputFields unsafe.Pointer
 	if opts != nil && len(opts.OutputFields) > 0 {
 		fieldPtrs, fieldKeep = cStringArray(opts.OutputFields)
@@ -3529,21 +3529,17 @@ func nullTerminatedBytes(value string) []byte {
 	return buf
 }
 
-func cStringArray(values []string) ([]unsafe.Pointer, [][]byte) {
+func cStringArray(values []string) ([]unsafe.Pointer, []byte) {
 	ptrs := make([]unsafe.Pointer, len(values))
-	keep := make([][]byte, len(values))
 	totalBytes := len(values)
 	for _, value := range values {
 		totalBytes += len(value)
 	}
 	buffer := make([]byte, totalBytes)
 	offset := 0
-	for i, value := range values {
-		end := offset + len(value)
-		keep[i] = buffer[offset : end+1 : end+1]
-		copy(keep[i], value)
-		ptrs[i] = unsafe.Pointer(&keep[i][0])
-		offset = end + 1
+	for index, value := range values {
+		ptrs[index] = unsafe.Pointer(&buffer[offset])
+		offset += copy(buffer[offset:], value) + 1
 	}
-	return ptrs, keep
+	return ptrs, buffer
 }

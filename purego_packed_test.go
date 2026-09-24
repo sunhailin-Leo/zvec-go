@@ -12,11 +12,15 @@ import (
 func TestCStringArrayPacksStorage(test *testing.T) {
 	values := []string{"short", "", "日本語-key"}
 	pointers, storage := cStringArray(values)
-	if len(pointers) != len(values) || len(storage) != len(values) {
-		test.Fatalf("cStringArray() returned %d pointers and %d slices", len(pointers), len(storage))
+	wantSize := len(values)
+	for _, value := range values {
+		wantSize += len(value)
+	}
+	if len(pointers) != len(values) || len(storage) != wantSize {
+		test.Fatalf("cStringArray() returned %d pointers and %d bytes, want %d", len(pointers), len(storage), wantSize)
 	}
 	runtime.GC()
-	for index, value := range values {
+	for index, value := range []string{"short", "", "日本語-key"} {
 		actual := unsafe.Slice((*byte)(pointers[index]), len(value)+1)
 		want := append([]byte(value), 0)
 		if !bytes.Equal(actual, want) {
