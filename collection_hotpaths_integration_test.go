@@ -7,6 +7,36 @@ import (
 	"testing"
 )
 
+func TestCollectionDeleteMultiplePrimaryKeys(test *testing.T) {
+	schema := createTestSchema()
+	defer schema.Destroy()
+	collection, err := CreateAndOpen(filepath.Join(testTempDir(test), "collection"), schema, nil)
+	if err != nil {
+		test.Fatalf("CreateAndOpen() failed: %v", err)
+	}
+	defer func() { _ = collection.Close() }()
+
+	keys := []string{"a", "longer-key", "another_key", "last"}
+	inputs := make([]*Doc, len(keys))
+	for index, key := range keys {
+		inputs[index] = createTestDoc(key, "value", []float32{1, 2, 3, 4})
+	}
+	defer FreeDocs(inputs)
+	result, err := collection.Insert(inputs)
+	if err != nil || result.SuccessCount != uint64(len(keys)) {
+		test.Fatalf("Insert() returned result=%v, err=%v", result, err)
+	}
+	result, err = collection.Delete(keys)
+	if err != nil || result.SuccessCount != uint64(len(keys)) {
+		test.Fatalf("Delete() returned result=%v, err=%v", result, err)
+	}
+	fetched, err := collection.Fetch(keys, nil)
+	if err != nil || len(fetched) != 0 {
+		FreeDocs(fetched)
+		test.Fatalf("Fetch() after Delete() returned %d documents, err=%v", len(fetched), err)
+	}
+}
+
 func TestCollectionQueryFetchResultOwnershipAndKeys(test *testing.T) {
 	schema := createTestSchema()
 	defer schema.Destroy()

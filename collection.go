@@ -368,19 +368,15 @@ func (c *Collection) Delete(pks []string) (*WriteResult, error) {
 	if len(pks) == 0 {
 		return &WriteResult{}, nil
 	}
-	cPKs := make([]*C.char, len(pks))
-	for i, pk := range pks {
-		cPKs[i] = C.CString(pk)
+	cPKs, buffer, err := cPrimaryKeyArray(pks)
+	if err != nil {
+		return nil, err
 	}
-	defer func() {
-		for _, cPK := range cPKs {
-			C.free(unsafe.Pointer(cPK))
-		}
-	}()
+	defer C.free(buffer)
 
 	var successCount, errorCount C.size_t
 	defer lockErrorThread()()
-	err := toError(C.zvec_collection_delete(
+	err = toError(C.zvec_collection_delete(
 		c.handle,
 		(**C.char)(unsafe.Pointer(&cPKs[0])),
 		C.size_t(len(pks)),
@@ -463,33 +459,11 @@ func (c *Collection) Fetch(primaryKeys []string, opts *FetchOptions) ([]*Doc, er
 	if len(primaryKeys) == 0 {
 		return nil, nil
 	}
-	cPKs := make([]*C.char, len(primaryKeys))
-	if len(primaryKeys) == 1 {
-		cPKs[0] = C.CString(primaryKeys[0])
-		defer C.free(unsafe.Pointer(cPKs[0]))
-	} else {
-		totalBytes := len(primaryKeys)
-		maxInt := int(^uint(0) >> 1)
-		for _, primaryKey := range primaryKeys {
-			if len(primaryKey) > maxInt-totalBytes {
-				return nil, &Error{Code: InvalidArgument, Message: "primary keys are too large"}
-			}
-			totalBytes += len(primaryKey)
-		}
-		buffer := C.malloc(C.size_t(totalBytes))
-		if buffer == nil {
-			return nil, &Error{Code: ResourceExhausted, Message: "failed to allocate primary key buffer"}
-		}
-		defer C.free(buffer)
-		bytes := unsafe.Slice((*byte)(buffer), totalBytes)
-		offset := 0
-		for index, primaryKey := range primaryKeys {
-			cPKs[index] = (*C.char)(unsafe.Add(buffer, offset))
-			offset += copy(bytes[offset:], primaryKey)
-			bytes[offset] = 0
-			offset++
-		}
+	cPKs, buffer, err := cPrimaryKeyArray(primaryKeys)
+	if err != nil {
+		return nil, err
 	}
+	defer C.free(buffer)
 
 	var cOutputFields **C.char
 	var outputFieldCount C.size_t
@@ -514,7 +488,7 @@ func (c *Collection) Fetch(primaryKeys []string, opts *FetchOptions) ([]*Doc, er
 	var cDocs **C.zvec_doc_t
 	var foundCount C.size_t
 	defer lockErrorThread()()
-	err := toError(C.zvec_collection_fetch(
+	err = toError(C.zvec_collection_fetch(
 		c.handle,
 		(**C.char)(unsafe.Pointer(&cPKs[0])),
 		C.size_t(len(primaryKeys)),
@@ -529,6 +503,35 @@ func (c *Collection) Fetch(primaryKeys []string, opts *FetchOptions) ([]*Doc, er
 		return nil, err
 	}
 	return wrapCResultDocs(cDocs, foundCount), nil
+}
+
+func cPrimaryKeyArray(keys []string) ([]*C.char, unsafe.Pointer, error) {
+	ptrs := make([]*C.char, len(keys))
+	if len(keys) == 1 {
+		ptrs[0] = C.CString(keys[0])
+		return ptrs, unsafe.Pointer(ptrs[0]), nil
+	}
+	totalBytes := len(keys)
+	maxInt := int(^uint(0) >> 1)
+	for _, key := range keys {
+		if len(key) > maxInt-totalBytes {
+			return nil, nil, &Error{Code: InvalidArgument, Message: "primary keys are too large"}
+		}
+		totalBytes += len(key)
+	}
+	buffer := C.malloc(C.size_t(totalBytes))
+	if buffer == nil {
+		return nil, nil, &Error{Code: ResourceExhausted, Message: "failed to allocate primary key buffer"}
+	}
+	bytes := unsafe.Slice((*byte)(buffer), totalBytes)
+	offset := 0
+	for index, key := range keys {
+		ptrs[index] = (*C.char)(unsafe.Add(buffer, offset))
+		offset += copy(bytes[offset:], key)
+		bytes[offset] = 0
+		offset++
+	}
+	return ptrs, buffer, nil
 }
 
 // FreeDocs is a convenience function to destroy multiple documents at once.
