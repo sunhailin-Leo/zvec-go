@@ -43,24 +43,29 @@ func BenchmarkFTSIngestion(benchmark *testing.B) {
 		batchSize  int
 		ftsAtStart bool
 		ftsAfter   bool
+		extra      string
 	}{
-		{"Plain_Batch512", 512, false, false},
-		{"FTS_Batch1", 1, true, false},
-		{"FTS_Batch128", 128, true, false},
-		{"FTS_Batch512", 512, true, false},
-		{"FTS_After_Batch512", 512, false, true},
+		{"Plain_Batch512", 512, false, false, ""},
+		{"FTS_Batch1", 1, true, false, ""},
+		{"FTS_Batch128", 128, true, false, ""},
+		{"FTS_Batch512", 512, true, false, ""},
+		{"FTS_After_Batch512", 512, false, true, ""},
+		{"FTS_NoPos_Batch1", 1, true, false, `{"store_positions":false}`},
+		{"FTS_NoPos_Batch128", 128, true, false, `{"store_positions":false}`},
+		{"FTS_NoPos_Batch512", 512, true, false, `{"store_positions":false}`},
+		{"FTS_NoPos_After_Batch512", 512, false, true, `{"store_positions":false}`},
 	}
 	for _, variant := range variants {
 		benchmark.Run(variant.name, func(caseBenchmark *testing.B) {
 			caseBenchmark.ReportAllocs()
 			for run := 0; run < caseBenchmark.N; run++ {
-				benchmarkFTSIngestCase(caseBenchmark, rows, text, corpus, vector, bufferMiB, variant.batchSize, variant.ftsAtStart, variant.ftsAfter)
+				benchmarkFTSIngestCase(caseBenchmark, rows, text, corpus, vector, bufferMiB, variant.batchSize, variant.ftsAtStart, variant.ftsAfter, variant.extra)
 			}
 		})
 	}
 }
 
-func benchmarkFTSIngestCase(benchmark *testing.B, rows int, text, corpus string, vector []float32, bufferMiB uint64, batchSize int, ftsAtStart, ftsAfter bool) {
+func benchmarkFTSIngestCase(benchmark *testing.B, rows int, text, corpus string, vector []float32, bufferMiB uint64, batchSize int, ftsAtStart, ftsAfter bool, ftsExtra string) {
 	benchmark.StopTimer()
 	schema := NewCollectionSchema("fts_bench")
 	if schema == nil {
@@ -73,7 +78,7 @@ func benchmarkFTSIngestCase(benchmark *testing.B, rows int, text, corpus string,
 	}
 	defer content.Destroy()
 	if ftsAtStart {
-		params := benchmarkFTSIndexParams(benchmark)
+		params := benchmarkFTSIndexParams(benchmark, ftsExtra)
 		defer params.Destroy()
 		if err := content.SetIndexParams(params); err != nil {
 			benchmark.Fatalf("SetIndexParams(content) failed: %v", err)
@@ -162,7 +167,7 @@ func benchmarkFTSIngestCase(benchmark *testing.B, rows int, text, corpus string,
 	flushBytes, flushDirs := benchmarkFTSDiskUsage(benchmark, path)
 	var indexTime time.Duration
 	if ftsAfter {
-		params := benchmarkFTSIndexParams(benchmark)
+		params := benchmarkFTSIndexParams(benchmark, ftsExtra)
 		defer params.Destroy()
 		started = time.Now()
 		if err := collection.CreateIndex("content", params); err != nil {
@@ -213,8 +218,8 @@ func benchmarkVariedFTSText(row int) string {
 	return text.String()
 }
 
-func benchmarkFTSIndexParams(benchmark *testing.B) *IndexParams {
-	params, err := NewFTSIndexParams("whitespace", []string{"lowercase"}, "")
+func benchmarkFTSIndexParams(benchmark *testing.B, extraParams string) *IndexParams {
+	params, err := NewFTSIndexParams("whitespace", []string{"lowercase"}, extraParams)
 	if err != nil {
 		benchmark.Fatalf("NewFTSIndexParams() failed: %v", err)
 	}
