@@ -3,7 +3,9 @@
 package zvec
 
 import (
+	"bytes"
 	"math"
+	"strconv"
 	"testing"
 )
 
@@ -448,7 +450,8 @@ func TestDocVectorFP32FieldEmpty(t *testing.T) {
 	}
 }
 
-// TestDocBinaryField tests AddBinaryField.
+// TestDocBinaryField tests AddBinaryField plus the GetBinaryField /
+// GetBinaryFieldInto read path (binary fields were previously write-only).
 func TestDocBinaryField(t *testing.T) {
 	doc := NewDoc()
 	defer doc.Destroy()
@@ -467,7 +470,55 @@ func TestDocBinaryField(t *testing.T) {
 			if err := doc.AddBinaryField(fieldName, tc.data); err != nil {
 				t.Fatalf("AddBinaryField failed: %v", err)
 			}
+			got, err := doc.GetBinaryField(fieldName)
+			if err != nil {
+				t.Fatalf("GetBinaryField failed: %v", err)
+			}
+			if !bytes.Equal(got, tc.data) {
+				t.Fatalf("GetBinaryField() = %v, want %v", got, tc.data)
+			}
+			into := make([]byte, 0, 8)
+			into, err = doc.GetBinaryFieldInto(fieldName, into)
+			if err != nil {
+				t.Fatalf("GetBinaryFieldInto failed: %v", err)
+			}
+			if !bytes.Equal(into, tc.data) {
+				t.Fatalf("GetBinaryFieldInto() = %v, want %v", into, tc.data)
+			}
+			if _, err := doc.GetBinaryField("binary_field_missing"); err == nil {
+				t.Fatal("GetBinaryField() on a missing field should fail")
+			}
 		})
+	}
+}
+
+// TestDocFieldNameInternFallback verifies field accessors keep working when
+// the intern table is full and names degrade to fresh CStrings per call.
+func TestDocFieldNameInternFallback(t *testing.T) {
+	doc := NewDoc()
+	defer doc.Destroy()
+
+	// Blow past the intern cap with distinct field names; every accessor
+	// below takes the fresh-CString fallback path internally but must behave
+	// identically.
+	const extra = 32
+	for i := 0; i < maxInternedFieldNames+extra; i++ {
+		if err := doc.AddStringField("field_"+strconv.Itoa(i), "v"); err != nil {
+			t.Fatalf("AddStringField failed at %d: %v", i, err)
+		}
+	}
+	for i := 0; i < 3; i++ {
+		name := "field_" + strconv.Itoa(i)
+		if !doc.HasField(name) {
+			t.Fatalf("HasField(%q) = false, want true", name)
+		}
+		value, err := doc.GetStringField(name)
+		if err != nil {
+			t.Fatalf("GetStringField failed: %v", err)
+		}
+		if value != "v" {
+			t.Fatalf("GetStringField(%q) = %q, want %q", name, value, "v")
+		}
 	}
 }
 
