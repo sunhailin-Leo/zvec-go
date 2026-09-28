@@ -70,15 +70,30 @@ func BenchmarkDocCreateDestroy(b *testing.B) {
 	}
 }
 
+// benchmarkFieldNames returns a fixed pool of field names so benchmarks can
+// index into them (i % len) inside the timed loop without paying fmt.Sprintf
+// allocations that would drown out the FFI cost under measurement.
+func benchmarkFieldNames() []string {
+	names := make([]string, 10)
+	for i := range names {
+		names[i] = fmt.Sprintf("field_%d", i)
+	}
+	return names
+}
+
 func BenchmarkDocSetPK(b *testing.B) {
 	b.ReportAllocs()
 	doc := NewDoc()
 	defer doc.Destroy()
 
+	pks := make([]string, 1024)
+	for i := range pks {
+		pks[i] = fmt.Sprintf("doc_%d", i)
+	}
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		pk := fmt.Sprintf("doc_%d", i)
-		doc.SetPK(pk)
+		doc.SetPK(pks[i%len(pks)])
 	}
 }
 
@@ -87,53 +102,39 @@ func BenchmarkDocAddStringField(b *testing.B) {
 	doc := NewDoc()
 	defer doc.Destroy()
 
+	fieldNames := benchmarkFieldNames()
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		fieldName := fmt.Sprintf("field_%d", i%10)
-		_ = doc.AddStringField(fieldName, "test value")
+		_ = doc.AddStringField(fieldNames[i%len(fieldNames)], "test value")
+	}
+}
+
+func benchmarkDocAddVectorFP32Field(b *testing.B, dimension int) {
+	b.Helper()
+	b.ReportAllocs()
+	doc := NewDoc()
+	defer doc.Destroy()
+
+	fieldNames := benchmarkFieldNames()
+	vector := generateRandomVector(dimension)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = doc.AddVectorFP32Field(fieldNames[i%len(fieldNames)], vector)
 	}
 }
 
 func BenchmarkDocAddVectorFP32Field_4D(b *testing.B) {
-	b.ReportAllocs()
-	doc := NewDoc()
-	defer doc.Destroy()
-
-	vector := generateRandomVector(4)
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		fieldName := fmt.Sprintf("vector_%d", i%10)
-		_ = doc.AddVectorFP32Field(fieldName, vector)
-	}
+	benchmarkDocAddVectorFP32Field(b, 4)
 }
 
 func BenchmarkDocAddVectorFP32Field_128D(b *testing.B) {
-	b.ReportAllocs()
-	doc := NewDoc()
-	defer doc.Destroy()
-
-	vector := generateRandomVector(128)
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		fieldName := fmt.Sprintf("vector_%d", i%10)
-		_ = doc.AddVectorFP32Field(fieldName, vector)
-	}
+	benchmarkDocAddVectorFP32Field(b, 128)
 }
 
 func BenchmarkDocAddVectorFP32Field_768D(b *testing.B) {
-	b.ReportAllocs()
-	doc := NewDoc()
-	defer doc.Destroy()
-
-	vector := generateRandomVector(768)
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		fieldName := fmt.Sprintf("vector_%d", i%10)
-		_ = doc.AddVectorFP32Field(fieldName, vector)
-	}
+	benchmarkDocAddVectorFP32Field(b, 768)
 }
 
 func BenchmarkDocGetStringField(b *testing.B) {
@@ -141,16 +142,16 @@ func BenchmarkDocGetStringField(b *testing.B) {
 	doc := NewDoc()
 	defer doc.Destroy()
 
+	fieldNames := benchmarkFieldNames()
+
 	// Pre-populate with fields
 	for i := 0; i < 100; i++ {
-		fieldName := fmt.Sprintf("field_%d", i%10)
-		_ = doc.AddStringField(fieldName, "test value")
+		_ = doc.AddStringField(fieldNames[i%len(fieldNames)], "test value")
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		fieldName := fmt.Sprintf("field_%d", i%10)
-		_, _ = doc.GetStringField(fieldName)
+		_, _ = doc.GetStringField(fieldNames[i%len(fieldNames)])
 	}
 }
 
@@ -197,6 +198,25 @@ func BenchmarkVectorQuerySetup(b *testing.B) {
 
 // Collection-related benchmarks
 
+// benchmarkBuildInsertDoc builds a doc with the canonical insert shape
+// (PK + string id field + 128-dim embedding vector). It allocates and pays
+// several cgo transitions, so call sites exclude it from the measured region
+// with StopTimer/StartTimer.
+func benchmarkBuildInsertDoc(pk string) *Doc {
+	doc := NewDoc()
+	doc.SetPK(pk)
+	_ = doc.AddStringField("id", pk)
+	_ = doc.AddVectorFP32Field("embedding", generateRandomVector(128))
+	return doc
+}
+
+// The Insert benchmarks below insert unique-PK documents every iteration, so
+// the HNSW index keeps growing for the whole run. The final collection size
+// therefore depends on b.N and thus on the machine; it is reported via the
+// docs-inserted metric so numbers from different runs can be compared at a
+// known corpus size. Doc construction is excluded from the timed region so
+// ns/op isolates the collection.Insert FFI call and native index work.
+
 func BenchmarkCollectionInsert(b *testing.B) {
 	b.ReportAllocs()
 
@@ -213,99 +233,65 @@ func BenchmarkCollectionInsert(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		doc := NewDoc()
-		pk := fmt.Sprintf("doc_%d", i)
-		doc.SetPK(pk)
-		_ = doc.AddStringField("id", pk)
-		vector := generateRandomVector(128)
-		_ = doc.AddVectorFP32Field("embedding", vector)
+		b.StopTimer()
+		doc := benchmarkBuildInsertDoc(fmt.Sprintf("doc_%d", i))
+		b.StartTimer()
 
 		_, err := collection.Insert([]*Doc{doc})
 		if err != nil {
 			b.Fatalf("Failed to insert document: %v", err)
 		}
+
+		b.StopTimer()
 		doc.Destroy()
+		b.StartTimer()
 	}
+	b.ReportMetric(float64(b.N), "docs-inserted")
+}
+
+func benchmarkCollectionInsertBatch(b *testing.B, batchSize int) {
+	b.Helper()
+	b.ReportAllocs()
+
+	tmpDir := b.TempDir()
+	path := tmpDir + "/col"
+	schema := benchmarkCreateSchema(128)
+	defer schema.Destroy()
+
+	collection, err := CreateAndOpen(path, schema, nil)
+	if err != nil {
+		b.Fatalf("Failed to create collection: %v", err)
+	}
+	defer func() { _ = collection.Close() }()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		docs := make([]*Doc, batchSize)
+		for j := 0; j < batchSize; j++ {
+			docs[j] = benchmarkBuildInsertDoc(fmt.Sprintf("doc_%d_%d", i, j))
+		}
+		b.StartTimer()
+
+		_, err := collection.Insert(docs)
+		if err != nil {
+			b.Fatalf("Failed to insert documents: %v", err)
+		}
+
+		b.StopTimer()
+		FreeDocs(docs)
+		b.StartTimer()
+	}
+	b.ReportMetric(float64(b.N)*float64(batchSize), "docs-inserted")
+	b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N)/float64(batchSize), "ns/doc")
 }
 
 func BenchmarkCollectionInsertBatch10(b *testing.B) {
-	b.ReportAllocs()
-
-	tmpDir := b.TempDir()
-	path := tmpDir + "/col"
-	schema := benchmarkCreateSchema(128)
-	defer schema.Destroy()
-
-	collection, err := CreateAndOpen(path, schema, nil)
-	if err != nil {
-		b.Fatalf("Failed to create collection: %v", err)
-	}
-	defer func() { _ = collection.Close() }()
-
-	batchSize := 10
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		docs := make([]*Doc, batchSize)
-		for j := 0; j < batchSize; j++ {
-			doc := NewDoc()
-			pk := fmt.Sprintf("doc_%d_%d", i, j)
-			doc.SetPK(pk)
-			_ = doc.AddStringField("id", pk)
-			vector := generateRandomVector(128)
-			_ = doc.AddVectorFP32Field("embedding", vector)
-			docs[j] = doc
-		}
-
-		_, err := collection.Insert(docs)
-		if err != nil {
-			b.Fatalf("Failed to insert documents: %v", err)
-		}
-
-		for _, doc := range docs {
-			doc.Destroy()
-		}
-	}
+	benchmarkCollectionInsertBatch(b, 10)
 }
 
 func BenchmarkCollectionInsertBatch100(b *testing.B) {
-	b.ReportAllocs()
-
-	tmpDir := b.TempDir()
-	path := tmpDir + "/col"
-	schema := benchmarkCreateSchema(128)
-	defer schema.Destroy()
-
-	collection, err := CreateAndOpen(path, schema, nil)
-	if err != nil {
-		b.Fatalf("Failed to create collection: %v", err)
-	}
-	defer func() { _ = collection.Close() }()
-
-	batchSize := 100
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		docs := make([]*Doc, batchSize)
-		for j := 0; j < batchSize; j++ {
-			doc := NewDoc()
-			pk := fmt.Sprintf("doc_%d_%d", i, j)
-			doc.SetPK(pk)
-			_ = doc.AddStringField("id", pk)
-			vector := generateRandomVector(128)
-			_ = doc.AddVectorFP32Field("embedding", vector)
-			docs[j] = doc
-		}
-
-		_, err := collection.Insert(docs)
-		if err != nil {
-			b.Fatalf("Failed to insert documents: %v", err)
-		}
-
-		for _, doc := range docs {
-			doc.Destroy()
-		}
-	}
+	benchmarkCollectionInsertBatch(b, 100)
 }
 
 func BenchmarkCollectionQuery(b *testing.B) {
